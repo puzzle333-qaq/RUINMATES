@@ -43,3 +43,8 @@ Config/*secret*
 
 # Local asset drops that stay out of the repo (demo packs, reference content)
 /ItemPickupSet/
+
+# Local editor workspace and Python caches
+/.vscode/
+__pycache__/
+*.pyc
