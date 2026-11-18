@@ -40,3 +40,6 @@ Config/*secret*
 # Asset management (managed via Git LFS in .gitattributes)
 # By default, ignore bulky prototype assets (LevelPrototyping) to keep repo slim
 /Content/LevelPrototyping/
+
+# Local asset drops that stay out of the repo (demo packs, reference content)
+/ItemPickupSet/
