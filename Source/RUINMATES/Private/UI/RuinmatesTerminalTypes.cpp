@@ -11,6 +11,7 @@ namespace
 		Slot.Quality = Quality;
 		Slot.Category = Category;
 		Slot.State = ERuinmatesTerminalSlotState::Revealed;
+		Slot.UnitValue = 100 * (static_cast<int32>(Quality) + 1);
 		return Slot;
 	}
 
@@ -20,6 +21,12 @@ namespace
 		Slot.StableIndex = Index;
 		Slot.State = ERuinmatesTerminalSlotState::Empty;
 		return Slot;
+	}
+
+	// Preview-only art lookup. Live pages read FRuinmatesItemRow::Icon instead.
+	FSoftObjectPath PreviewIcon(const TCHAR* Name)
+	{
+		return FSoftObjectPath(FString::Printf(TEXT("/Game/RUINMATES/UI/Textures/Items/%s.%s"), Name, Name));
 	}
 
 	void PadTo(TArray<FRuinmatesTerminalSlotView>& Slots, int32 Capacity)
@@ -46,13 +53,21 @@ FRuinmatesTerminalPreviewPage RuinmatesTerminalPreview::MakeInventoryPage()
 		Item(5, NSLOCTEXT("RuinMatesUI", "Gold", "金条"), 1, ERuinmatesItemQuality::Precious, TEXT("Material")),
 		Item(6, NSLOCTEXT("RuinMatesUI", "Bandage", "绷带"), 6, ERuinmatesItemQuality::Common, TEXT("Consumable"))
 	};
+	const TCHAR* Icons[] = { TEXT("T_Item_AmmoBox"), TEXT("T_Item_Cans"), TEXT("T_Item_Circuit"), TEXT("T_Item_Gland"),
+		TEXT("T_Item_Generic"), TEXT("T_Item_Core"), TEXT("T_Item_Bandage") };
+	for (int32 Index = 0; Index < Page.Backpack.Num() && Index < UE_ARRAY_COUNT(Icons); ++Index)
+	{
+		Page.Backpack[Index].Icon = PreviewIcon(Icons[Index]);
+	}
 	Page.Used = 7;
+	Page.Funds = 9863;
+	Page.BackpackTierName = NSLOCTEXT("RuinMatesUI", "PackTactical", "高级战术背包");
 	Page.LootValue = 16800;
 	PadTo(Page.Backpack, Page.Capacity);
 	Page.Backpack[2].bSelected = true;
 	Page.RightTitle = NSLOCTEXT("RuinMatesUI", "Survivor", "幸存者");
 	Page.RightSubtitle = NSLOCTEXT("RuinMatesUI", "LevelPreview", "LV.06");
-	Page.FooterLeft = NSLOCTEXT("RuinMatesUI", "InvFooter", "TAB 关闭    右键查看    拖动转移");
+	Page.FooterLeft = NSLOCTEXT("RuinMatesUI", "InvFooter", "TAB 关闭    左键选择    右键丢弃");
 	Page.FooterRight = NSLOCTEXT("RuinMatesUI", "SortPreview", "整理");
 	return Page;
 }
@@ -65,6 +80,7 @@ FRuinmatesTerminalPreviewPage RuinmatesTerminalPreview::MakeSearchPage()
 	Page.Used = 8;
 	Page.LootValue = 3680;
 	Page.Backpack[7] = Item(7, NSLOCTEXT("RuinMatesUI", "Watch", "金表"), 1, ERuinmatesItemQuality::Rare, TEXT("Material"));
+	Page.Backpack[7].Icon = PreviewIcon(TEXT("T_Item_Generic"));
 	Page.bRightIsContainer = true;
 	Page.RightTitle = NSLOCTEXT("RuinMatesUI", "Crate", "废弃研究所储物箱");
 	Page.RightSubtitle = NSLOCTEXT("RuinMatesUI", "SearchCount", "3 / 6");
@@ -74,6 +90,9 @@ FRuinmatesTerminalPreviewPage RuinmatesTerminalPreview::MakeSearchPage()
 		Item(1, NSLOCTEXT("RuinMatesUI", "Meds2", "药品"), 2, ERuinmatesItemQuality::Fine, TEXT("Consumable")),
 		Item(2, NSLOCTEXT("RuinMatesUI", "Gold2", "金条"), 1, ERuinmatesItemQuality::Precious, TEXT("Material"))
 	};
+	Page.RightSlots[0].Icon = PreviewIcon(TEXT("T_Item_Circuit"));
+	Page.RightSlots[1].Icon = PreviewIcon(TEXT("T_Item_Bandage"));
+	Page.RightSlots[2].Icon = PreviewIcon(TEXT("T_Item_Core"));
 	FRuinmatesTerminalSlotView Scanning = EmptySlot(3);
 	Scanning.State = ERuinmatesTerminalSlotState::Searching;
 	FRuinmatesTerminalSlotView HiddenA = EmptySlot(4);
@@ -83,8 +102,8 @@ FRuinmatesTerminalPreviewPage RuinmatesTerminalPreview::MakeSearchPage()
 	Page.RightSlots.Add(Scanning);
 	Page.RightSlots.Add(HiddenA);
 	Page.RightSlots.Add(HiddenB);
-	Page.FooterLeft = NSLOCTEXT("RuinMatesUI", "SearchFooter", "ESC 关闭    Shift+左键 快速转移    拖动");
+	Page.FooterLeft = NSLOCTEXT("RuinMatesUI", "SearchFooter", "ESC 关闭    点击已发现物品拾取");
 	Page.FooterRight = NSLOCTEXT("RuinMatesUI", "NotPaused", "游戏不暂停");
-	Page.StatusText = NSLOCTEXT("RuinMatesUI", "NightSoon", "即将入夜");
+
 	return Page;
 }

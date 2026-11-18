@@ -1,203 +1,505 @@
 #include "UI/RuinmatesTerminalItemSlot.h"
 
 #include "Blueprint/WidgetTree.h"
-#include "Components/Border.h"
 #include "Components/Button.h"
+#include "Components/ButtonSlot.h"
+#include "Components/HorizontalBox.h"
+#include "Components/HorizontalBoxSlot.h"
+#include "Components/Image.h"
 #include "Components/Overlay.h"
 #include "Components/OverlaySlot.h"
 #include "Components/ProgressBar.h"
 #include "Components/SizeBox.h"
 #include "Components/TextBlock.h"
+#include "InputCoreTypes.h"
 #include "UI/RuinmatesUIStyle.h"
+
+namespace
+{
+	// Plate textures indexed by the button style we push. Kept in one table so ApplyPlateStyle
+	// only rebuilds the FButtonStyle when the plate actually changes.
+	enum class EPlate : int32
+	{
+		Empty,
+		Filled,
+		Unknown,
+		Searching,
+		Disabled
+	};
+
+	UOverlaySlot* AddLayer(UOverlay* Layer, UWidget* Child, EHorizontalAlignment H, EVerticalAlignment V, const FMargin& Padding = FMargin(0.f))
+	{
+		UOverlaySlot* LayerSlot = Layer->AddChildToOverlay(Child);
+		if (LayerSlot)
+		{
+			LayerSlot->SetHorizontalAlignment(H);
+			LayerSlot->SetVerticalAlignment(V);
+			LayerSlot->SetPadding(Padding);
+		}
+		// Every display layer is invisible to hit testing; the Button owns the whole cell.
+		Child->SetVisibility(ESlateVisibility::HitTestInvisible);
+		return LayerSlot;
+	}
+
+	void Show(UWidget* Widget, bool bShow)
+	{
+		if (Widget)
+		{
+			Widget->SetVisibility(bShow ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+		}
+	}
+
+	FText QualityLine(const FRuinmatesTerminalSlotView& View)
+	{
+		return RuinmatesItems::GetQualityName(View.Quality);
+	}
+}
 
 void URuinmatesTerminalItemSlot::NativeOnInitialized()
 {
 	Super::NativeOnInitialized();
+	BuildTree();
+	RefreshLayoutMetrics();
+	RefreshVisual();
+}
 
-	USizeBox* Size = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("SlotSize"));
-	Size->SetWidthOverride(184.f);
-	Size->SetHeightOverride(112.f);
-	WidgetTree->RootWidget = Size;
+void URuinmatesTerminalItemSlot::BuildTree()
+{
+	SlotSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("SlotSize"));
+	SlotSize->SetWidthOverride(CellSize.X);
+	SlotSize->SetHeightOverride(CellSize.Y);
+	WidgetTree->RootWidget = SlotSize;
 
-	Frame = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("Frame"));
-	Frame->SetPadding(FMargin(8.f, 8.f, 8.f, 10.f));
-	Size->SetContent(Frame);
+	HitButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), TEXT("Hit"));
+	HitButton->OnClicked.AddDynamic(this, &URuinmatesTerminalItemSlot::HandleClicked);
+	HitButton->OnHovered.AddDynamic(this, &URuinmatesTerminalItemSlot::HandleHovered);
+	HitButton->OnUnhovered.AddDynamic(this, &URuinmatesTerminalItemSlot::HandleUnhovered);
+	SlotSize->SetContent(HitButton);
 
 	UOverlay* Layer = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass(), TEXT("Layer"));
-	Frame->SetContent(Layer);
-
-	UButton* Button = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), TEXT("Hit"));
-	FButtonStyle Style = Button->GetStyle();
-	Style.Normal.TintColor = FSlateColor(FLinearColor::Transparent);
-	Style.Hovered.TintColor = FSlateColor(RuinmatesUI::SlotHover());
-	Style.Pressed.TintColor = FSlateColor(RuinmatesUI::AccentFill());
-	Button->SetStyle(Style);
-	Button->OnClicked.AddDynamic(this, &URuinmatesTerminalItemSlot::HandleClicked);
-	Layer->AddChildToOverlay(Button);
-
-	IconText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Icon"));
-	IconText->SetFont(RuinmatesUI::Font(28));
-	IconText->SetJustification(ETextJustify::Center);
-	IconText->SetText(NSLOCTEXT("RuinMatesUI", "PlaceholderIcon", "□"));
-	if (UOverlaySlot* IconSlot = Layer->AddChildToOverlay(IconText))
+	HitButton->AddChild(Layer);
+	// ROOT CAUSE of the old "tiny slot": UButtonSlot defaults to HAlign_Center / VAlign_Center, so
+	// the button shrank its content to the desired size of a 28px text glyph while the SizeBox
+	// still reserved 184x112. The content must fill the whole button.
+	if (UButtonSlot* ContentSlot = Cast<UButtonSlot>(Layer->Slot))
 	{
-		IconSlot->SetHorizontalAlignment(HAlign_Center);
-		IconSlot->SetVerticalAlignment(VAlign_Center);
-		IconSlot->SetPadding(FMargin(0.f, 0.f, 0.f, 16.f));
+		ContentSlot->SetHorizontalAlignment(HAlign_Fill);
+		ContentSlot->SetVerticalAlignment(VAlign_Fill);
+		ContentSlot->SetPadding(FMargin(0.f));
 	}
 
-	CountText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Count"));
-	CountText->SetFont(RuinmatesUI::Font(16));
-	CountText->SetJustification(ETextJustify::Right);
-	if (UOverlaySlot* CountSlot = Layer->AddChildToOverlay(CountText))
-	{
-		CountSlot->SetHorizontalAlignment(HAlign_Right);
-		CountSlot->SetVerticalAlignment(VAlign_Top);
-	}
+	QualityGlow = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("QualityGlow"));
+	QualityGlow->SetBrush(RuinmatesUI::Box(TEXT("Slots"), TEXT("T_UI_Slot_QualityGlow"), FMargin(0.f, 0.f, 0.f, 0.25f)));
+	AddLayer(Layer, QualityGlow, HAlign_Fill, VAlign_Fill, FMargin(2.f));
+
+	Hatch = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("Hatch"));
+	Hatch->SetBrush(RuinmatesUI::Tiled(TEXT("Slots"), TEXT("T_UI_HatchTile")));
+	AddLayer(Layer, Hatch, HAlign_Fill, VAlign_Fill, FMargin(3.f, 3.f, 3.f, 10.f));
+
+	ScanBand = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("ScanBand"));
+	ScanBand->SetBrush(RuinmatesUI::Image(TEXT("Decorations"), TEXT("T_UI_ScanPattern")));
+	RuinmatesUI::SetImageSize(ScanBand, FVector2D(64.f, 48.f));
+	AddLayer(Layer, ScanBand, HAlign_Fill, VAlign_Top, FMargin(3.f, 0.f));
+
+	EmptyMark = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("EmptyMark"));
+	EmptyMark->SetBrush(RuinmatesUI::Image(TEXT("Slots"), TEXT("T_UI_Slot_EmptyMark")));
+	RuinmatesUI::SetImageSize(EmptyMark, FVector2D(44.f, 44.f));
+	AddLayer(Layer, EmptyMark, HAlign_Center, VAlign_Center);
+
+	IconBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("IconBox"));
+	ItemIcon = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("ItemIcon"));
+	IconBox->SetContent(ItemIcon);
+	AddLayer(Layer, IconBox, HAlign_Center, VAlign_Center);
+
+	UnknownBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("UnknownBox"));
+	UnknownIcon = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("UnknownIcon"));
+	UnknownBox->SetContent(UnknownIcon);
+	AddLayer(Layer, UnknownBox, HAlign_Center, VAlign_Center);
+
+	NameStrip = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("NameStrip"));
+	NameStrip->SetBrush(RuinmatesUI::Image(TEXT("Slots"), TEXT("T_UI_Slot_NameStrip")));
+	RuinmatesUI::SetImageSize(NameStrip, FVector2D(32.f, 44.f));
+	AddLayer(Layer, NameStrip, HAlign_Fill, VAlign_Bottom, FMargin(2.f, 0.f, 2.f, 2.f));
 
 	NameText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Name"));
-	NameText->SetFont(RuinmatesUI::Font(15));
 	NameText->SetAutoWrapText(false);
-	NameText->SetClipping(EWidgetClipping::ClipToBounds);
-	if (UOverlaySlot* NameSlot = Layer->AddChildToOverlay(NameText))
-	{
-		NameSlot->SetHorizontalAlignment(HAlign_Fill);
-		NameSlot->SetVerticalAlignment(VAlign_Bottom);
-		NameSlot->SetPadding(FMargin(2.f, 0.f, 2.f, 4.f));
-	}
+	NameText->SetTextOverflowPolicy(ETextOverflowPolicy::Ellipsis);
+	NameText->SetShadowOffset(FVector2D(0.f, 1.f));
+	NameText->SetShadowColorAndOpacity(RuinmatesUI::Token(TEXT("02060B"), 0.8f));
+	AddLayer(Layer, NameText, HAlign_Fill, VAlign_Bottom);
 
-	QualityLine = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("QualityLine"));
-	if (UOverlaySlot* LineSlot = Layer->AddChildToOverlay(QualityLine))
+	CountText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Count"));
+	CountText->SetJustification(ETextJustify::Right);
+	CountText->SetShadowOffset(FVector2D(0.f, 1.f));
+	CountText->SetShadowColorAndOpacity(RuinmatesUI::Token(TEXT("02060B"), 0.9f));
+	AddLayer(Layer, CountText, HAlign_Right, VAlign_Top);
+
+	RarityPips = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("RarityPips"));
+	for (int32 Index = 0; Index < 5; ++Index)
 	{
-		LineSlot->SetHorizontalAlignment(HAlign_Fill);
-		LineSlot->SetVerticalAlignment(VAlign_Bottom);
+		UImage* Pip = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), FName(*FString::Printf(TEXT("Pip_%d"), Index)));
+		Pip->SetBrush(RuinmatesUI::Image(TEXT("Slots"), TEXT("T_UI_RarityPip")));
+		RuinmatesUI::SetImageSize(Pip, FVector2D(9.f, 9.f));
+		if (UHorizontalBoxSlot* PipSlot = RarityPips->AddChildToHorizontalBox(Pip))
+		{
+			PipSlot->SetPadding(FMargin(0.f, 0.f, 3.f, 0.f));
+			PipSlot->SetVerticalAlignment(VAlign_Center);
+		}
 	}
-	USizeBox* LineSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("LineSize"));
-	LineSize->SetHeightOverride(2.f);
-	QualityLine->SetContent(LineSize);
+	AddLayer(Layer, RarityPips, HAlign_Left, VAlign_Top);
+
+	StatusText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Status"));
+	StatusText->SetJustification(ETextJustify::Center);
+	AddLayer(Layer, StatusText, HAlign_Center, VAlign_Bottom);
 
 	ScanBar = WidgetTree->ConstructWidget<UProgressBar>(UProgressBar::StaticClass(), TEXT("Scan"));
-	ScanBar->SetFillColorAndOpacity(RuinmatesUI::Accent());
-	ScanBar->SetVisibility(ESlateVisibility::Collapsed);
-	if (UOverlaySlot* ScanSlot = Layer->AddChildToOverlay(ScanBar))
+	ScanBar->SetWidgetStyle(RuinmatesUI::ProgressStyle());
+	ScanBar->SetFillColorAndOpacity(RuinmatesUI::Cyan());
+	USizeBox* ScanSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("ScanSize"));
+	ScanSize->SetHeightOverride(8.f);
+	ScanSize->SetContent(ScanBar);
+	AddLayer(Layer, ScanSize, HAlign_Fill, VAlign_Bottom);
+	ScanBar->SetVisibility(ESlateVisibility::HitTestInvisible);
+
+	QualityFrame = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("QualityFrame"));
+	QualityFrame->SetBrush(RuinmatesUI::SlotBrush(TEXT("T_UI_Slot_Frame")));
+	AddLayer(Layer, QualityFrame, HAlign_Fill, VAlign_Fill);
+
+	Selection = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("Selection"));
+	Selection->SetBrush(RuinmatesUI::SlotBrush(TEXT("T_UI_Slot_Selected")));
+	AddLayer(Layer, Selection, HAlign_Fill, VAlign_Fill, FMargin(-3.f));
+}
+
+void URuinmatesTerminalItemSlot::Configure(const FVector2D& InSize, ERuinmatesTerminalSlotLayout InLayout)
+{
+	const bool bLayoutChanged = Layout != InLayout;
+	const bool bSizeChanged = !CellSize.Equals(InSize, 0.5f);
+	CellSize = InSize;
+	Layout = InLayout;
+	if (SlotSize && bSizeChanged)
 	{
-		ScanSlot->SetHorizontalAlignment(HAlign_Fill);
-		ScanSlot->SetVerticalAlignment(VAlign_Bottom);
-		ScanSlot->SetPadding(FMargin(0.f, 0.f, 0.f, 4.f));
+		SlotSize->SetWidthOverride(CellSize.X);
+		SlotSize->SetHeightOverride(CellSize.Y);
 	}
+	if (bSizeChanged || bLayoutChanged)
+	{
+		RefreshLayoutMetrics();
+		RefreshVisual();
+	}
+}
+
+void URuinmatesTerminalItemSlot::RefreshLayoutMetrics()
+{
+	if (!IconBox || !NameText)
+	{
+		return;
+	}
+	const bool bCard = Layout == ERuinmatesTerminalSlotLayout::Card;
+	// Icon takes ~60% of the short side; on cards it sits above the name block.
+	const float Short = FMath::Min(CellSize.X, CellSize.Y);
+	const float IconSize = FMath::RoundToFloat(Short * (bCard ? 0.66f : 0.60f));
+	IconBox->SetWidthOverride(IconSize);
+	IconBox->SetHeightOverride(IconSize);
+	UnknownBox->SetWidthOverride(Short * 0.40f);
+	UnknownBox->SetHeightOverride(Short * 0.40f);
+
+	const float Pad = FMath::Clamp(Short * 0.07f, 8.f, 14.f);
+	if (UOverlaySlot* IconSlot = Cast<UOverlaySlot>(IconBox->Slot))
+	{
+		IconSlot->SetPadding(FMargin(0.f, 0.f, 0.f, bCard ? CellSize.Y * 0.20f : Short * 0.16f));
+	}
+	if (UOverlaySlot* UnknownSlot = Cast<UOverlaySlot>(UnknownBox->Slot))
+	{
+		UnknownSlot->SetPadding(FMargin(0.f, 0.f, 0.f, bCard ? CellSize.Y * 0.12f : Short * 0.06f));
+	}
+	if (UOverlaySlot* NameSlot = Cast<UOverlaySlot>(NameText->Slot))
+	{
+		NameSlot->SetPadding(FMargin(Pad, 0.f, Pad, bCard ? Pad + 18.f : Pad + 2.f));
+	}
+	if (UOverlaySlot* CountSlot = Cast<UOverlaySlot>(CountText->Slot))
+	{
+		CountSlot->SetPadding(FMargin(0.f, Pad - 2.f, Pad, 0.f));
+	}
+	if (UOverlaySlot* PipSlot = Cast<UOverlaySlot>(RarityPips->Slot))
+	{
+		PipSlot->SetPadding(FMargin(Pad, Pad + 2.f, 0.f, 0.f));
+	}
+	if (UOverlaySlot* StatusSlot = Cast<UOverlaySlot>(StatusText->Slot))
+	{
+		StatusSlot->SetPadding(FMargin(Pad, 0.f, Pad, Pad + 18.f));
+	}
+	if (UWidget* ScanSize = ScanBar ? ScanBar->GetParent() : nullptr)
+	{
+		if (UOverlaySlot* ScanSlot = Cast<UOverlaySlot>(ScanSize->Slot))
+		{
+			ScanSlot->SetPadding(FMargin(Pad, 0.f, Pad, Pad));
+		}
+	}
+
+	NameText->SetFont(bCard ? RuinmatesUI::FontBold(20) : RuinmatesUI::Font(18));
+	CountText->SetFont(RuinmatesUI::FontBold(bCard ? 20 : 18));
+	StatusText->SetFont(RuinmatesUI::Font(16));
+	RuinmatesUI::SetImageSize(NameStrip, FVector2D(32.f, bCard ? 76.f : 52.f));
+	NameText->SetJustification(bCard ? ETextJustify::Left : ETextJustify::Center);
 }
 
 void URuinmatesTerminalItemSlot::ApplyView(const FRuinmatesTerminalSlotView& InView)
 {
+	const bool bWasHidden = View.State == ERuinmatesTerminalSlotState::Unknown || View.State == ERuinmatesTerminalSlotState::Searching;
+	const bool bNowRevealed = InView.State == ERuinmatesTerminalSlotState::Revealed;
+	if (bWasHidden && bNowRevealed && InView.Quality >= ERuinmatesItemQuality::Rare)
+	{
+		RevealFlash = 0.3f;
+	}
+	if (View.State != InView.State)
+	{
+		ScanTime = 0.f;
+	}
 	View = InView;
 	RefreshVisual();
 }
 
+void URuinmatesTerminalItemSlot::ApplyPlateStyle()
+{
+	if (!HitButton)
+	{
+		return;
+	}
+	EPlate Plate = EPlate::Filled;
+	switch (View.State)
+	{
+	case ERuinmatesTerminalSlotState::Empty: Plate = EPlate::Empty; break;
+	case ERuinmatesTerminalSlotState::Unknown: Plate = EPlate::Unknown; break;
+	case ERuinmatesTerminalSlotState::Searching: Plate = EPlate::Searching; break;
+	case ERuinmatesTerminalSlotState::Taken: Plate = EPlate::Disabled; break;
+	default: Plate = View.bDimmed ? EPlate::Disabled : EPlate::Filled; break;
+	}
+	if (AppliedPlate == static_cast<int32>(Plate))
+	{
+		return;
+	}
+	AppliedPlate = static_cast<int32>(Plate);
+
+	const FSlateBrush Hover = RuinmatesUI::SlotBrush(TEXT("T_UI_Slot_Hover"));
+	const FSlateBrush Pressed = RuinmatesUI::SlotBrush(TEXT("T_UI_Slot_Pressed"));
+	FButtonStyle Style;
+	Style.NormalPadding = FMargin(0.f);
+	Style.PressedPadding = FMargin(0.f);
+	switch (Plate)
+	{
+	case EPlate::Empty:
+		Style.Normal = RuinmatesUI::SlotBrush(TEXT("T_UI_Slot_Empty"));
+		// Empty cells only brighten slightly on hover; there is nothing to press.
+		Style.Hovered = RuinmatesUI::SlotBrush(TEXT("T_UI_Slot_Empty"), FLinearColor(1.25f, 1.3f, 1.35f, 1.f));
+		Style.Pressed = Style.Hovered;
+		break;
+	case EPlate::Unknown:
+		Style.Normal = RuinmatesUI::SlotBrush(TEXT("T_UI_Slot_Unknown"));
+		Style.Hovered = Style.Normal;
+		Style.Pressed = Style.Normal;
+		break;
+	case EPlate::Searching:
+		Style.Normal = RuinmatesUI::SlotBrush(TEXT("T_UI_Slot_Searching"));
+		Style.Hovered = Style.Normal;
+		Style.Pressed = Style.Normal;
+		break;
+	case EPlate::Disabled:
+		Style.Normal = RuinmatesUI::SlotBrush(TEXT("T_UI_Slot_Empty"), FLinearColor(0.6f, 0.6f, 0.65f, 0.7f));
+		Style.Hovered = Style.Normal;
+		Style.Pressed = Style.Normal;
+		break;
+	case EPlate::Filled:
+	default:
+		Style.Normal = RuinmatesUI::SlotBrush(TEXT("T_UI_Slot_Filled"));
+		Style.Hovered = Hover;
+		Style.Pressed = Pressed;
+		break;
+	}
+	Style.Disabled = Style.Normal;
+	HitButton->SetStyle(Style);
+}
+
 void URuinmatesTerminalItemSlot::RefreshVisual()
 {
-	if (!Frame || !NameText || !CountText || !IconText || !QualityLine || !ScanBar)
+	if (!HitButton || !NameText || !ItemIcon)
 	{
 		return;
 	}
 
-	const bool bKnown = View.State == ERuinmatesTerminalSlotState::Revealed || View.State == ERuinmatesTerminalSlotState::Pending;
+	const ERuinmatesTerminalSlotState State = View.State;
+	const bool bKnown = State == ERuinmatesTerminalSlotState::Revealed || State == ERuinmatesTerminalSlotState::Pending;
+	const bool bEmpty = State == ERuinmatesTerminalSlotState::Empty;
+	const bool bUnknown = State == ERuinmatesTerminalSlotState::Unknown;
+	const bool bSearching = State == ERuinmatesTerminalSlotState::Searching;
+	const bool bTaken = State == ERuinmatesTerminalSlotState::Taken;
+	const bool bCard = Layout == ERuinmatesTerminalSlotLayout::Card;
 	const FLinearColor Quality = RuinmatesUI::QualityColor(static_cast<uint8>(View.Quality));
-	FLinearColor Fill = RuinmatesUI::SlotEmpty();
-	FLinearColor Border = RuinmatesUI::Line();
-	int32 BorderPx = 1;
+	const float Dim = View.bDimmed ? 0.28f : 1.f;
 
+	ApplyPlateStyle();
+	// Pending (request in flight), taken and filtered cells cannot be clicked again.
+	HitButton->SetIsEnabled(!(State == ERuinmatesTerminalSlotState::Pending || bTaken || View.bDimmed));
+
+	// Quality: low-alpha gradient that peaks in a thin bottom line, plus a tinted frame.
+	Show(QualityGlow, bKnown);
+	QualityGlow->SetColorAndOpacity(RuinmatesUI::WithAlpha(Quality, (bHovered ? 0.55f : 0.42f) * Dim));
+	Show(QualityFrame, bKnown);
+	const float FrameAlpha = (bHovered ? 0.95f : 0.62f) + RevealFlash * 1.2f;
+	QualityFrame->SetColorAndOpacity(RuinmatesUI::WithAlpha(Quality, FMath::Min(1.f, FrameAlpha) * Dim));
+
+	Show(Hatch, bUnknown || bSearching);
+	Hatch->SetColorAndOpacity(FLinearColor(1.f, 1.f, 1.f, bSearching ? 0.9f : 0.6f));
+	Show(ScanBand, bSearching);
+	Show(EmptyMark, bEmpty || bTaken);
+	EmptyMark->SetColorAndOpacity(FLinearColor(1.f, 1.f, 1.f, bTaken ? 0.35f : (bHovered ? 1.f : 0.75f)));
+
+	// Item art.
+	Show(IconBox, bKnown);
 	if (bKnown)
 	{
-		Fill = Quality;
-		Fill.A = 0.14f;
-		Border = Quality;
-	}
-	else if (View.State == ERuinmatesTerminalSlotState::Searching)
-	{
-		Border = RuinmatesUI::Accent();
-		BorderPx = 2;
-	}
-	else if (View.State == ERuinmatesTerminalSlotState::Unknown)
-	{
-		Fill = RuinmatesUI::SlotEmpty();
-		Fill.A = 0.9f;
-	}
-	else if (View.State == ERuinmatesTerminalSlotState::Taken || View.State == ERuinmatesTerminalSlotState::Empty)
-	{
-		Fill.A = 0.35f;
-		Border = RuinmatesUI::Line();
-		Border.A = 0.28f;
+		static const FSoftObjectPath Generic(TEXT("/Game/RUINMATES/UI/Textures/Items/T_Item_Generic.T_Item_Generic"));
+		const FSoftObjectPath& Wanted = View.Icon.IsNull() ? Generic : View.Icon;
+		if (AppliedIcon != Wanted)
+		{
+			UTexture2D* IconTexture = RuinmatesUI::TextureAt(Wanted);
+			if (!IconTexture)
+			{
+				IconTexture = RuinmatesUI::TextureAt(Generic);
+			}
+			ItemIcon->SetBrush(RuinmatesUI::ImageFor(IconTexture));
+			AppliedIcon = Wanted;
+		}
+		ItemIcon->SetColorAndOpacity(FLinearColor(1.f, 1.f, 1.f, State == ERuinmatesTerminalSlotState::Pending ? 0.5f : Dim));
 	}
 
-	if (View.bSelected && bKnown)
+	Show(UnknownBox, bUnknown || bSearching);
+	if (bUnknown || bSearching)
 	{
-		Border = RuinmatesUI::Accent();
-		BorderPx = 2;
-		FLinearColor Selected = RuinmatesUI::AccentFill();
-		Fill = FLinearColor(
-			FMath::Lerp(Fill.R, Selected.R, 0.45f),
-			FMath::Lerp(Fill.G, Selected.G, 0.45f),
-			FMath::Lerp(Fill.B, Selected.B, 0.45f),
-			FMath::Max(Fill.A, Selected.A));
+		UnknownIcon->SetBrush(bSearching
+			? RuinmatesUI::Image(TEXT("Icons"), TEXT("T_UI_Icon_Scan"))
+			: RuinmatesUI::Image(TEXT("Icons"), TEXT("T_UI_Icon_Unknown")));
+		UnknownIcon->SetColorAndOpacity(bSearching ? RuinmatesUI::Cyan() : RuinmatesUI::WithAlpha(RuinmatesUI::TextWeak(), 0.9f));
 	}
 
-	Frame->SetBrushColor(Fill);
-	Frame->SetPadding(FMargin(static_cast<float>(BorderPx) + 7.f));
-	QualityLine->SetBrushColor(bKnown ? Quality : FLinearColor::Transparent);
-	QualityLine->SetVisibility(bKnown ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+	// Text.
+	Show(NameStrip, bKnown);
+	Show(NameText, bKnown);
+	Show(CountText, bKnown && View.Count > 1);
+	if (bKnown)
+	{
+		NameText->SetText(View.Name);
+		NameText->SetColorAndOpacity(FSlateColor(RuinmatesUI::WithAlpha(RuinmatesUI::TextPrimary(), Dim)));
+		CountText->SetText(FText::Format(NSLOCTEXT("RuinMatesUI", "CountFmt", "×{0}"), FText::AsNumber(View.Count)));
+		CountText->SetColorAndOpacity(FSlateColor(RuinmatesUI::WithAlpha(RuinmatesUI::TextPrimary(), Dim)));
+	}
 
-	if (View.State == ERuinmatesTerminalSlotState::Unknown)
+	// Rarity pips: one per quality step, so rarity reads without relying on colour alone.
+	Show(RarityPips, bKnown && !View.bDimmed);
+	const int32 PipCount = static_cast<int32>(View.Quality) + 1;
+	for (int32 Index = 0; Index < RarityPips->GetChildrenCount(); ++Index)
 	{
-		IconText->SetText(NSLOCTEXT("RuinMatesUI", "UnknownMark", "?"));
-		IconText->SetColorAndOpacity(FSlateColor(RuinmatesUI::TextMuted()));
-		NameText->SetText(FText::GetEmpty());
-		CountText->SetText(FText::GetEmpty());
+		if (UImage* Pip = Cast<UImage>(RarityPips->GetChildAt(Index)))
+		{
+			Pip->SetVisibility(Index < PipCount ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+			Pip->SetColorAndOpacity(Quality);
+		}
 	}
-	else if (View.State == ERuinmatesTerminalSlotState::Searching)
+
+	Show(StatusText, bSearching || (bUnknown && bCard) || (bTaken && bCard));
+	if (bSearching)
 	{
-		IconText->SetText(NSLOCTEXT("RuinMatesUI", "ScanningMark", "扫描"));
-		IconText->SetFont(RuinmatesUI::Font(16));
-		IconText->SetColorAndOpacity(FSlateColor(RuinmatesUI::Accent()));
-		NameText->SetText(FText::GetEmpty());
-		CountText->SetText(FText::GetEmpty());
+		StatusText->SetText(NSLOCTEXT("RuinMatesUI", "SlotScanning", "扫描中…"));
+		StatusText->SetColorAndOpacity(FSlateColor(RuinmatesUI::Cyan()));
 	}
-	else if (!bKnown)
+	else if (bTaken)
 	{
-		IconText->SetText(FText::GetEmpty());
-		NameText->SetText(FText::GetEmpty());
-		CountText->SetText(FText::GetEmpty());
+		StatusText->SetText(NSLOCTEXT("RuinMatesUI", "SlotTaken", "已取走"));
+		StatusText->SetColorAndOpacity(FSlateColor(RuinmatesUI::TextWeak()));
 	}
 	else
 	{
-		IconText->SetText(NSLOCTEXT("RuinMatesUI", "PlaceholderIcon", "□"));
-		IconText->SetFont(RuinmatesUI::Font(28));
-		IconText->SetColorAndOpacity(FSlateColor(RuinmatesUI::TextPrimary()));
-		NameText->SetText(View.Name);
-		NameText->SetColorAndOpacity(FSlateColor(Quality));
-		CountText->SetText(View.Count > 1 ? FText::Format(NSLOCTEXT("RuinMatesUI", "CountFmt", "×{0}"), FText::AsNumber(View.Count)) : FText::GetEmpty());
-		CountText->SetColorAndOpacity(FSlateColor(RuinmatesUI::TextPrimary()));
+		StatusText->SetText(NSLOCTEXT("RuinMatesUI", "SlotUnknown", "未识别"));
+		StatusText->SetColorAndOpacity(FSlateColor(RuinmatesUI::TextWeak()));
 	}
 
-	const bool bScanning = View.State == ERuinmatesTerminalSlotState::Searching;
-	ScanBar->SetVisibility(bScanning ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
-	ScanBar->SetPercent(bScanning ? ScanTime : 0.f);
+	// The per-item scan bar is a visual loop only: the server reveal timer owns the real timing.
+	Show(ScanBar ? ScanBar->GetParent() : nullptr, bSearching);
+	Show(ScanBar, bSearching);
+
+	Show(Selection, bKnown && View.bSelected && !View.bDimmed);
+
+	// Tooltip with the details that do not fit on the cell. Hidden items never leak content.
+	if (bKnown && !View.bDimmed)
+	{
+		FText Tip = FText::Format(NSLOCTEXT("RuinMatesUI", "SlotTooltip", "{0}\n品质：{1}    数量：{2}"),
+			View.Name, QualityLine(View), FText::AsNumber(View.Count));
+		if (View.UnitValue > 0)
+		{
+			Tip = FText::Format(NSLOCTEXT("RuinMatesUI", "SlotTooltipValue", "{0}\n参考价值：{1}"), Tip, FText::AsNumber(View.UnitValue * View.Count));
+		}
+		if (!View.Description.IsEmpty())
+		{
+			Tip = FText::Format(NSLOCTEXT("RuinMatesUI", "SlotTooltipDesc", "{0}\n{1}"), Tip, View.Description);
+		}
+		SetToolTipText(Tip);
+	}
+	else
+	{
+		SetToolTipText(FText::GetEmpty());
+	}
 }
 
 void URuinmatesTerminalItemSlot::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);
-	if (View.State != ERuinmatesTerminalSlotState::Searching || !ScanBar)
+
+	if (RevealFlash > 0.f)
+	{
+		RevealFlash = FMath::Max(0.f, RevealFlash - InDeltaTime);
+		const FLinearColor Quality = RuinmatesUI::QualityColor(static_cast<uint8>(View.Quality));
+		QualityFrame->SetColorAndOpacity(RuinmatesUI::WithAlpha(Quality, FMath::Min(1.f, 0.62f + RevealFlash * 1.2f)));
+	}
+
+	// Only searching cells animate; everything else stays idle.
+	if (View.State != ERuinmatesTerminalSlotState::Searching || !ScanBar || !ScanBand)
 	{
 		return;
 	}
 	ScanTime = FMath::Fmod(ScanTime + InDeltaTime / 1.2f, 1.f);
 	ScanBar->SetPercent(ScanTime);
+	const float Travel = FMath::Max(0.f, CellSize.Y - 48.f);
+	ScanBand->SetRenderTranslation(FVector2D(0.f, Travel * ScanTime));
+	ScanBand->SetRenderOpacity(FMath::Sin(ScanTime * PI) * 0.9f + 0.1f);
+}
+
+FReply URuinmatesTerminalItemSlot::NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
+{
+	// The button only consumes the left button, so right clicks bubble up to here.
+	if (InMouseEvent.GetEffectingButton() == EKeys::RightMouseButton
+		&& View.State == ERuinmatesTerminalSlotState::Revealed && !View.bDimmed)
+	{
+		OnSlotRightClicked.Broadcast(View.StableIndex);
+		return FReply::Handled();
+	}
+	return Super::NativeOnMouseButtonDown(InGeometry, InMouseEvent);
 }
 
 void URuinmatesTerminalItemSlot::HandleClicked()
 {
-	if (View.State == ERuinmatesTerminalSlotState::Revealed)
+	if (View.State == ERuinmatesTerminalSlotState::Revealed && !View.bDimmed)
 	{
 		OnSlotClicked.Broadcast(View.StableIndex);
 	}
+}
+
+void URuinmatesTerminalItemSlot::HandleHovered()
+{
+	bHovered = true;
+	RefreshVisual();
+}
+
+void URuinmatesTerminalItemSlot::HandleUnhovered()
+{
+	bHovered = false;
+	RefreshVisual();
 }

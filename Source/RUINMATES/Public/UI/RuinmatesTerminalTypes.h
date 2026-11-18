@@ -16,6 +16,13 @@ enum class ERuinmatesTerminalSlotState : uint8
 	Taken
 };
 
+/** Visual size class of a terminal cell. */
+enum class ERuinmatesTerminalSlotLayout : uint8
+{
+	Grid,	// backpack grid, square
+	Card	// search container card, taller than wide
+};
+
 USTRUCT()
 struct FRuinmatesTerminalSlotView
 {
@@ -41,6 +48,20 @@ struct FRuinmatesTerminalSlotView
 
 	UPROPERTY()
 	bool bSelected = false;
+
+	/** Item icon from DT_Items (FRuinmatesItemRow::Icon). Null falls back to the generic icon. */
+	UPROPERTY()
+	FSoftObjectPath Icon;
+
+	UPROPERTY()
+	FText Description;
+
+	UPROPERTY()
+	int32 UnitValue = 0;
+
+	/** Hidden by the active category filter: drawn dimmed and not clickable, index unchanged. */
+	UPROPERTY()
+	bool bDimmed = false;
 };
 
 struct FRuinmatesTerminalPreviewPage
@@ -59,6 +80,11 @@ struct FRuinmatesTerminalPreviewPage
 	FText FooterLeft;
 	FText FooterRight;
 	FText StatusText;
+	/** Team wallet from ARuinmatesGameState; INDEX_NONE hides the funds chip. */
+	int32 Funds = INDEX_NONE;
+	/** Right panel (character) extras. */
+	FText BackpackTierName;
+	bool bHasWeapon = false;
 };
 
 namespace RuinmatesTerminalPreview
