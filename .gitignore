@@ -1,0 +1,42 @@
+# Unreal Engine generated files
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+.vs/
+FileOpenOrder/
+
+# Visual Studio / IDE local files
+*.sln
+*.suo
+*.user
+*.VC.db
+*.VC.opendb
+*.opensdf
+*.opendb
+*.sdf
+*.slnx
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+
+# Build outputs
+Packaged/
+StagedBuilds/
+Build/
+
+# Test and Automation logs
+Docs/*.log
+Docs/*.stdout.txt
+Docs/*_index.json
+
+# Local secrets & credentials
+.env
+*.pfx
+*.pem
+Config/*Secret*
+Config/*secret*
+
+# Asset management (managed via Git LFS in .gitattributes)
+# By default, ignore bulky prototype assets (LevelPrototyping) to keep repo slim
+/Content/LevelPrototyping/

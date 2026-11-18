@@ -1,0 +1,162 @@
+#pragma once
+
+#include "CoreMinimal.h"
+#include "GameFramework/Character.h"
+#include "RuinmatesCharacter.generated.h"
+
+class UCameraComponent;
+class USpringArmComponent;
+class UStatsComponent;
+class UWeaponPoseComponent;
+class UWeaponInventoryComponent;
+class ABaseWeapon;
+class UAnimMontage;
+
+// Third-person character: movement and stamina only. Not a port of AShooterCharacter.
+// Weapon pose, mounting, and firing live in separate components.
+UCLASS()
+class RUINMATES_API ARuinmatesCharacter : public ACharacter
+{
+	GENERATED_BODY()
+
+public:
+	ARuinmatesCharacter();
+
+	virtual void PostInitializeComponents() override;
+	virtual void BeginPlay() override;
+	virtual void PossessedBy(AController* NewController) override;
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+	virtual bool CanJumpInternal_Implementation() const override;
+	virtual void OnJumped_Implementation() override;
+	virtual void OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
+	virtual void OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
+
+	UFUNCTION(BlueprintCallable, Category = "RuinMates|Movement")
+	void StartSprint();
+
+	UFUNCTION(BlueprintCallable, Category = "RuinMates|Movement")
+	void StopSprint();
+
+	UFUNCTION(BlueprintPure, Category = "RuinMates|Movement")
+	bool IsSprinting() const { return bWantsToSprint; }
+
+	UFUNCTION(BlueprintCallable, Category = "RuinMates|Movement")
+	void ToggleCrouch();
+
+	UFUNCTION(BlueprintCallable, Category = "RuinMates|Movement")
+	void StartAim();
+
+	UFUNCTION(BlueprintCallable, Category = "RuinMates|Movement")
+	void StopAim();
+
+	UFUNCTION(BlueprintPure, Category = "RuinMates|Movement")
+	bool IsAiming() const { return bWantsToAim; }
+
+	UFUNCTION(BlueprintPure, Category = "RuinMates|Stats")
+	UStatsComponent* GetStats() const { return Stats; }
+
+	UFUNCTION(BlueprintPure, Category = "RuinMates|Camera")
+	USpringArmComponent* GetCameraBoom() const { return CameraBoom; }
+
+	UFUNCTION(BlueprintPure, Category = "RuinMates|Camera")
+	UCameraComponent* GetFollowCamera() const { return FollowCamera; }
+
+	UFUNCTION(BlueprintPure, Category = "RuinMates|Weapon")
+	UWeaponPoseComponent* GetWeaponPose() const { return WeaponPose; }
+
+	UFUNCTION(BlueprintPure, Category = "RuinMates|Weapon")
+	UWeaponInventoryComponent* GetWeaponInventory() const { return WeaponInventory; }
+
+	UFUNCTION(BlueprintPure, Category = "RuinMates|Weapon")
+	ABaseWeapon* GetEquippedWeapon() const { return EquippedWeapon; }
+
+	// Server-authoritative equip. Binds mount + pose and plays the third-person equip montage when present.
+	UFUNCTION(BlueprintCallable, Category = "RuinMates|Weapon")
+	void EquipWeapon(ABaseWeapon* NewWeapon);
+
+	UFUNCTION(BlueprintCallable, Category = "RuinMates|Weapon")
+	void UnequipWeapon();
+
+	UFUNCTION(BlueprintCallable, Category = "RuinMates|Weapon")
+	void TryFireWeapon();
+
+	UFUNCTION(BlueprintCallable, Category = "RuinMates|Weapon")
+	void TryReloadWeapon();
+
+	UFUNCTION(BlueprintPure, Category = "RuinMates|Weapon")
+	bool IsWeaponReloading() const;
+
+	// Body montages from the equipped weapon data. The server calls this directly.
+	// Clients call it from weapon OnRep so the third-person fire/reload actually plays.
+	void PlayEquippedMontages(bool bJustEquipped, bool bJustFired, bool bJustReloaded);
+
+protected:
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RuinMates|Stats")
+	TObjectPtr<UStatsComponent> Stats;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RuinMates|Camera")
+	TObjectPtr<USpringArmComponent> CameraBoom;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RuinMates|Camera")
+	TObjectPtr<UCameraComponent> FollowCamera;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RuinMates|Weapon")
+	TObjectPtr<UWeaponPoseComponent> WeaponPose;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RuinMates|Weapon")
+	TObjectPtr<UWeaponInventoryComponent> WeaponInventory;
+
+	UPROPERTY(ReplicatedUsing = OnRep_EquippedWeapon)
+	TObjectPtr<ABaseWeapon> EquippedWeapon;
+
+
+	// Speeds taken from the pre-trim third-person locomotion (not CQB TacticalTrim zeros).
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RuinMates|Movement")
+	float RunSpeed = 220.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RuinMates|Movement")
+	float SprintSpeed = 320.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RuinMates|Movement", meta = (ClampMin = "0"))
+	float CrouchSpeedMultiplier = 0.6f;
+
+	UPROPERTY(ReplicatedUsing = OnRep_WantsToSprint)
+	bool bWantsToSprint = false;
+
+	UPROPERTY(ReplicatedUsing = OnRep_WantsToAim)
+	bool bWantsToAim = false;
+
+	void BindStatsDelegates();
+	void ApplyMovementSpeed();
+	void UpdateArmedFacing();
+
+	UFUNCTION()
+	void HandleStaminaDepleted();
+
+	UFUNCTION()
+	void OnRep_WantsToSprint();
+
+	UFUNCTION()
+	void OnRep_WantsToAim();
+
+	UFUNCTION(Server, Reliable)
+	void Server_SetWantsToSprint(bool bNewWantsToSprint);
+
+	UFUNCTION(Server, Reliable)
+	void Server_SetWantsToAim(bool bNewWantsToAim);
+
+	void SetWantsToSprintLocal(bool bNewWantsToSprint);
+	void SetWantsToAimLocal(bool bNewWantsToAim);
+
+	UFUNCTION()
+	void OnRep_EquippedWeapon(ABaseWeapon* PreviousWeapon);
+
+	UFUNCTION(Server, Reliable)
+	void Server_EquipWeapon(ABaseWeapon* NewWeapon);
+
+	UFUNCTION(Server, Reliable)
+	void Server_UnequipWeapon();
+
+	void BindEquippedWeapon(ABaseWeapon* PreviousWeapon);
+	void PlayBodyMontage(UAnimMontage* Montage);
+
+};
