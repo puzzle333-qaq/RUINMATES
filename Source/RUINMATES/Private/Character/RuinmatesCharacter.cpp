@@ -1,8 +1,9 @@
-#include "Character/RuinmatesCharacter.h"
+﻿#include "Character/RuinmatesCharacter.h"
 
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/PlayerController.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Net/UnrealNetwork.h"
 #include "Stats/StatsComponent.h"
@@ -13,11 +14,21 @@
 #include "Weapon/WeaponPoseComponent.h"
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
+#include "Blueprint/UserWidget.h"
+#include "Components/CanvasPanelSlot.h"
+#include "EnhancedInputComponent.h"
+#include "EnhancedInputSubsystems.h"
+#include "InputAction.h"
+#include "InputMappingContext.h"
+#include "Interface/Interactable.h"
+#include "UI/RuinmatesCrosshairWidget.h"
+#include "Engine/World.h"
+#include "CollisionQueryParams.h"
 
 
 ARuinmatesCharacter::ARuinmatesCharacter()
 {
-	PrimaryActorTick.bCanEverTick = false;
+	PrimaryActorTick.bCanEverTick = true;
 	bReplicates = true;
 	SetReplicatingMovement(true);
 
@@ -75,11 +86,37 @@ void ARuinmatesCharacter::BeginPlay()
 	BindStatsDelegates();
 
 	ApplyMovementSpeed();
+	if (IsValid(CameraBoom))
+	{
+		HipArmLength = CameraBoom->TargetArmLength;
+		HipSocketOffset = CameraBoom->SocketOffset;
+		HipTargetOffset = CameraBoom->TargetOffset;
+	}
 	if (IsValid(WeaponPose))
 	{
 		WeaponPose->SetBodyMesh(GetMesh());
 	}
 	BindEquippedWeapon(nullptr);
+	EnsureCrosshair();
+}
+
+void ARuinmatesCharacter::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+	UpdateAimCamera(DeltaSeconds);
+	UpdateCrosshairVisibility();
+}
+
+void ARuinmatesCharacter::PawnClientRestart()
+{
+	Super::PawnClientRestart();
+	EnsureCrosshair();
+}
+
+void ARuinmatesCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
+{
+	Super::SetupPlayerInputComponent(PlayerInputComponent);
+	BindAimInput(PlayerInputComponent);
 }
 
 void ARuinmatesCharacter::PossessedBy(AController* NewController)
@@ -200,6 +237,7 @@ void ARuinmatesCharacter::SetWantsToAimLocal(bool bNewWantsToAim)
 	}
 
 	bWantsToAim = bNewWantsToAim;
+	ApplyMovementSpeed();
 	if (!HasAuthority())
 	{
 		Server_SetWantsToAim(bNewWantsToAim);
@@ -213,6 +251,7 @@ void ARuinmatesCharacter::Server_SetWantsToAim_Implementation(bool bNewWantsToAi
 
 void ARuinmatesCharacter::OnRep_WantsToAim()
 {
+	ApplyMovementSpeed();
 }
 
 void ARuinmatesCharacter::SetWantsToSprintLocal(bool bNewWantsToSprint)
@@ -255,14 +294,15 @@ void ARuinmatesCharacter::ApplyMovementSpeed()
 		return;
 	}
 
-	if (bWantsToSprint && (bIsCrouched || IsWeaponReloading()))
+	if (bWantsToSprint && (bIsCrouched || IsWeaponReloading() || bWantsToAim))
 	{
 		bWantsToSprint = false;
 	}
 
-	const float Speed = bWantsToSprint ? SprintSpeed : RunSpeed;
+	const float AimScale = bWantsToAim ? AimSpeedMultiplier : 1.f;
+	const float Speed = bWantsToSprint ? SprintSpeed : RunSpeed * AimScale;
 	Movement->MaxWalkSpeed = Speed;
-	Movement->MaxWalkSpeedCrouched = RunSpeed * CrouchSpeedMultiplier;
+	Movement->MaxWalkSpeedCrouched = RunSpeed * CrouchSpeedMultiplier * AimScale;
 
 	if (HasAuthority() && IsValid(Stats))
 	{
@@ -508,3 +548,86 @@ void ARuinmatesCharacter::UpdateArmedFacing()
 	}
 }
 
+void ARuinmatesCharacter::UpdateAimCamera(float DeltaSeconds)
+{
+	if (!IsLocallyControlled() || !IsValid(CameraBoom))
+	{
+		return;
+	}
+
+	const float TargetAlpha = bWantsToAim ? 1.f : 0.f;
+	AimCameraAlpha = FMath::FInterpTo(AimCameraAlpha, TargetAlpha, DeltaSeconds, AimCameraInterpSpeed);
+	CameraBoom->TargetArmLength = FMath::Lerp(HipArmLength, AimArmLength, AimCameraAlpha);
+	CameraBoom->SocketOffset = FMath::Lerp(HipSocketOffset, AimSocketOffset, AimCameraAlpha);
+	CameraBoom->TargetOffset = FMath::Lerp(HipTargetOffset, AimTargetOffset, AimCameraAlpha);
+}
+
+void ARuinmatesCharacter::EnsureCrosshair()
+{
+	if (!IsLocallyControlled() || CrosshairWidget)
+	{
+		return;
+	}
+
+	APlayerController* PlayerController = Cast<APlayerController>(GetController());
+	if (!PlayerController)
+	{
+		return;
+	}
+
+	CrosshairWidget = CreateWidget<URuinmatesCrosshairWidget>(PlayerController, URuinmatesCrosshairWidget::StaticClass());
+	if (!CrosshairWidget)
+	{
+		return;
+	}
+
+	CrosshairWidget->AddToViewport(20);
+	if (UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(CrosshairWidget->Slot))
+	{
+		CanvasSlot->SetAnchors(FAnchors(0.f, 0.f, 1.f, 1.f));
+		CanvasSlot->SetOffsets(FMargin(0.f));
+	}
+	PlayerController->SetShowMouseCursor(false);
+	PlayerController->SetInputMode(FInputModeGameOnly());
+	UpdateCrosshairVisibility();
+}
+
+void ARuinmatesCharacter::UpdateCrosshairVisibility()
+{
+	if (!CrosshairWidget)
+	{
+		return;
+	}
+	CrosshairWidget->SetVisibility(bWantsToAim ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+}
+
+void ARuinmatesCharacter::BindAimInput(UInputComponent* PlayerInputComponent)
+{
+	UEnhancedInputComponent* EnhancedInput = Cast<UEnhancedInputComponent>(PlayerInputComponent);
+	UInputAction* AimAction = LoadObject<UInputAction>(nullptr, TEXT("/Game/Input/Actions/IA_Aim.IA_Aim"));
+	if (!EnhancedInput || !AimAction)
+	{
+		return;
+	}
+
+	EnhancedInput->BindAction(AimAction, ETriggerEvent::Started, this, &ARuinmatesCharacter::StartAim);
+	EnhancedInput->BindAction(AimAction, ETriggerEvent::Completed, this, &ARuinmatesCharacter::StopAim);
+	EnhancedInput->BindAction(AimAction, ETriggerEvent::Canceled, this, &ARuinmatesCharacter::StopAim);
+
+	if (UInputAction* FireAction = LoadObject<UInputAction>(nullptr, TEXT("/Game/Input/Actions/IA_Fire.IA_Fire")))
+	{
+		EnhancedInput->BindAction(FireAction, ETriggerEvent::Triggered, this, &ARuinmatesCharacter::TryFireWeapon);
+	}
+
+	APlayerController* PlayerController = Cast<APlayerController>(GetController());
+	ULocalPlayer* LocalPlayer = PlayerController ? PlayerController->GetLocalPlayer() : nullptr;
+	UEnhancedInputLocalPlayerSubsystem* InputSubsystem = LocalPlayer ? LocalPlayer->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>() : nullptr;
+	if (!InputSubsystem || InputSubsystem->QueryKeysMappedToAction(AimAction).Num() > 0)
+	{
+		return;
+	}
+
+	UInputMappingContext* AimContext = NewObject<UInputMappingContext>(this);
+	AimContext->MapKey(AimAction, EKeys::RightMouseButton);
+	InputSubsystem->AddMappingContext(AimContext, 1);
+}

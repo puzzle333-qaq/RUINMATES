@@ -11,6 +11,8 @@ class UWeaponPoseComponent;
 class UWeaponInventoryComponent;
 class ABaseWeapon;
 class UAnimMontage;
+class UInputComponent;
+class URuinmatesCrosshairWidget;
 
 // Third-person character: movement and stamina only. Not a port of AShooterCharacter.
 // Weapon pose, mounting, and firing live in separate components.
@@ -24,7 +26,10 @@ public:
 
 	virtual void PostInitializeComponents() override;
 	virtual void BeginPlay() override;
+	virtual void Tick(float DeltaSeconds) override;
 	virtual void PossessedBy(AController* NewController) override;
+	virtual void PawnClientRestart() override;
+	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual bool CanJumpInternal_Implementation() const override;
 	virtual void OnJumped_Implementation() override;
@@ -119,6 +124,22 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RuinMates|Movement", meta = (ClampMin = "0"))
 	float CrouchSpeedMultiplier = 0.6f;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RuinMates|Movement", meta = (ClampMin = "0.1", ClampMax = "1"))
+	float AimSpeedMultiplier = 0.5f;
+
+	// Over-the-shoulder pose. The orbit point sits at the shoulder, and the camera stays behind it.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RuinMates|Camera", meta = (ClampMin = "40"))
+	float AimArmLength = 170.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RuinMates|Camera")
+	FVector AimSocketOffset = FVector(0.f, 55.f, 35.f);
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RuinMates|Camera")
+	FVector AimTargetOffset = FVector(15.f, 20.f, 55.f);
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RuinMates|Camera", meta = (ClampMin = "0.1"))
+	float AimCameraInterpSpeed = 8.f;
+
 	UPROPERTY(ReplicatedUsing = OnRep_WantsToSprint)
 	bool bWantsToSprint = false;
 
@@ -128,6 +149,10 @@ protected:
 	void BindStatsDelegates();
 	void ApplyMovementSpeed();
 	void UpdateArmedFacing();
+	void UpdateAimCamera(float DeltaSeconds);
+	void EnsureCrosshair();
+	void UpdateCrosshairVisibility();
+	void BindAimInput(UInputComponent* PlayerInputComponent);
 
 	UFUNCTION()
 	void HandleStaminaDepleted();
@@ -159,4 +184,11 @@ protected:
 	void BindEquippedWeapon(ABaseWeapon* PreviousWeapon);
 	void PlayBodyMontage(UAnimMontage* Montage);
 
+	float HipArmLength = 400.f;
+	FVector HipSocketOffset = FVector::ZeroVector;
+	FVector HipTargetOffset = FVector::ZeroVector;
+	float AimCameraAlpha = 0.f;
+
+	UPROPERTY()
+	TObjectPtr<URuinmatesCrosshairWidget> CrosshairWidget;
 };

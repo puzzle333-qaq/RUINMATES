@@ -12,9 +12,14 @@ public class RUINMATES : ModuleRules
 			"CoreUObject",
 			"Engine",
 			"GameplayTags",
+			"EnhancedInput",
+			"InputCore",
 			"Niagara",
 			"OnlineSubsystem",
-			"OnlineSubsystemUtils"
+			"OnlineSubsystemUtils",
+			"Slate",
+			"SlateCore",
+			"UMG"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[]
