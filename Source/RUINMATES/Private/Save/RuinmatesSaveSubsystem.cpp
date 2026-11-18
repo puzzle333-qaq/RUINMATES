@@ -3,6 +3,7 @@
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
 #include "Game/RuinmatesPlayerState.h"
+#include "Game/RuinmatesGameState.h"
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
 
@@ -128,6 +129,12 @@ bool URuinmatesSaveSubsystem::CapturePartyFromWorld(UWorld* World)
 	if (!CanMutateSave() || !IsValid(World))
 	{
 		return false;
+	}
+
+	// The wallet lives on the game state; mirror it into the campaign before anything is written.
+	if (const ARuinmatesGameState* RuinState = World->GetGameState<ARuinmatesGameState>())
+	{
+		SetSharedFunds(RuinState->GetSharedFunds());
 	}
 
 	bool bCapturedAny = false;

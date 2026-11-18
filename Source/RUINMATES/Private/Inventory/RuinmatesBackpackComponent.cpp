@@ -98,6 +98,74 @@ int32 URuinmatesBackpackComponent::TryAdd(const FRuinmatesItemStack& Incoming)
 	return Accepted;
 }
 
+bool URuinmatesBackpackComponent::RemoveItemAt(int32 SlotIndex, int32 Count)
+{
+	if (!GetOwner() || !GetOwner()->HasAuthority() || Count <= 0 || !Slots.IsValidIndex(SlotIndex))
+	{
+		return false;
+	}
+
+	FRuinmatesItemStack& Slot = Slots[SlotIndex];
+	if (Slot.IsEmpty())
+	{
+		return false;
+	}
+
+	Slot.Count -= FMath::Min(Count, Slot.Count);
+	if (Slot.Count <= 0)
+	{
+		Slot = FRuinmatesItemStack();
+	}
+	OnChanged.Broadcast();
+	return true;
+}
+
+int32 URuinmatesBackpackComponent::GetAvailableCapacityForItem(const FRuinmatesItemStack& Incoming) const
+{
+	if (Incoming.ItemId.IsNone())
+	{
+		return 0;
+	}
+
+	const int32 StackMax = FMath::Max(1, Incoming.MaxStack);
+	int32 EmptySlots = 0;
+	int32 Room = 0;
+	for (const FRuinmatesItemStack& Slot : Slots)
+	{
+		if (!Slot.IsEmpty() && Slot.ItemId == Incoming.ItemId && Slot.Quality == Incoming.Quality)
+		{
+			Room += FMath::Max(0, Slot.MaxStack - Slot.Count);
+		}
+		else if (Slot.IsEmpty())
+		{
+			++EmptySlots;
+		}
+	}
+	// Slots are resized in BeginPlay on the server; count any not-yet-created slots as free.
+	EmptySlots += FMath::Max(0, GetCapacity() - Slots.Num());
+	Room += EmptySlots * StackMax;
+	return Room;
+}
+
+bool URuinmatesBackpackComponent::CanAddExactCount(const FRuinmatesItemStack& Incoming, int32 Count) const
+{
+	return Count > 0 && !Incoming.ItemId.IsNone() && GetAvailableCapacityForItem(Incoming) >= Count;
+}
+
+bool URuinmatesBackpackComponent::TryAddExact(const FRuinmatesItemStack& Incoming, int32 Count)
+{
+	if (!CanAddExactCount(Incoming, Count))
+	{
+		return false;
+	}
+
+	FRuinmatesItemStack Request = Incoming;
+	Request.Count = Count;
+	const int32 Accepted = TryAdd(Request);
+	ensureMsgf(Accepted == Count, TEXT("TryAddExact accepted %d of %d after a capacity check"), Accepted, Count);
+	return Accepted == Count;
+}
+
 bool URuinmatesBackpackComponent::DiscardSlot(int32 SlotIndex)
 {
 	if (!GetOwner() || !GetOwner()->HasAuthority() || !Slots.IsValidIndex(SlotIndex) || Slots[SlotIndex].IsEmpty())

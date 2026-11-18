@@ -39,6 +39,18 @@ public:
 	/** Server only. Adds as many as will fit. Returns how many were accepted. */
 	int32 TryAdd(const FRuinmatesItemStack& Incoming);
 
+	/** Server only. Free units for this stack: partial room in matching stacks plus empty slots. */
+	int32 GetAvailableCapacityForItem(const FRuinmatesItemStack& Incoming) const;
+
+	/** Server only. True when the whole count would fit, used for all-or-nothing purchases. */
+	bool CanAddExactCount(const FRuinmatesItemStack& Incoming, int32 Count) const;
+
+	/** Server only. Adds exactly Count or nothing, so money and items can be committed together. */
+	bool TryAddExact(const FRuinmatesItemStack& Incoming, int32 Count);
+
+	/** Server only. Removes Count from one slot; clears the slot when it reaches zero. */
+	bool RemoveItemAt(int32 SlotIndex, int32 Count);
+
 	/** Server only. Clears one stack so the player can make room. */
 	bool DiscardSlot(int32 SlotIndex);
 

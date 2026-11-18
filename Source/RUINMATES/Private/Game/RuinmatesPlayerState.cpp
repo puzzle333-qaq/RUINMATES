@@ -1,5 +1,6 @@
 #include "Game/RuinmatesPlayerState.h"
 
+#include "Game/RuinmatesGameState.h"
 #include "GameFramework/GameStateBase.h"
 #include "Net/UnrealNetwork.h"
 
@@ -24,8 +25,7 @@ void ARuinmatesPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>
 	DOREPLIFETIME(ARuinmatesPlayerState, CampaignLevel);
 	DOREPLIFETIME(ARuinmatesPlayerState, EquippedLoadoutId);
 	DOREPLIFETIME(ARuinmatesPlayerState, TalentIds);
-	DOREPLIFETIME(ARuinmatesPlayerState, TeamFunds);
-}
+	}
 
 void ARuinmatesPlayerState::EnsureStableMemberId()
 {
@@ -72,23 +72,33 @@ void ARuinmatesPlayerState::SetTalentIds(const TArray<FName>& InTalents)
 
 void ARuinmatesPlayerState::AddTeamFunds(int32 Amount)
 {
-	if (!HasAuthority() || Amount == 0)
+	// Legacy entry point kept so older blueprints and tests still compile. The wallet itself lives
+	// on the game state; this only forwards to it so there is a single source of truth.
+	if (!HasAuthority() || Amount == 0 || !GetWorld())
 	{
 		return;
 	}
-
-	AGameStateBase* GameState = GetWorld() ? GetWorld()->GetGameState() : nullptr;
-	if (!GameState)
+	if (ARuinmatesGameState* RuinState = GetWorld()->GetGameState<ARuinmatesGameState>())
 	{
-		TeamFunds = FMath::Max(0, TeamFunds + Amount);
-		return;
-	}
-
-	for (APlayerState* Other : GameState->PlayerArray)
-	{
-		if (ARuinmatesPlayerState* Member = Cast<ARuinmatesPlayerState>(Other))
+		if (Amount > 0)
 		{
-			Member->TeamFunds = FMath::Max(0, Member->TeamFunds + Amount);
+			RuinState->AddFunds(Amount);
+		}
+		else
+		{
+			RuinState->TrySpendFunds(-Amount);
 		}
 	}
+}
+
+int32 ARuinmatesPlayerState::GetTeamFunds() const
+{
+	if (const UWorld* World = GetWorld())
+	{
+		if (const ARuinmatesGameState* RuinState = World->GetGameState<ARuinmatesGameState>())
+		{
+			return RuinState->GetSharedFunds();
+		}
+	}
+	return 0;
 }

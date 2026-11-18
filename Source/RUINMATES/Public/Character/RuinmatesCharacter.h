@@ -16,6 +16,8 @@ class ABaseWeapon;
 class UAnimMontage;
 class UInputComponent;
 class URuinmatesCrosshairWidget;
+class ARuinmatesMerchant;
+class URuinmatesTradeScreen;
 
 // Third-person character: movement and stamina only. Not a port of AShooterCharacter.
 // Weapon pose, mounting, and firing live in separate components.
@@ -104,6 +106,22 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "RuinMates|Weapon")
 	bool IsWeaponReloading() const;
+
+	// ---- Trading -------------------------------------------------------------
+	// Server starts a trade with a merchant; the owning client gets the trade screen opened
+	// through OnRep_ActiveMerchant. Only one interaction UI is open at a time.
+	void BeginTrade(ARuinmatesMerchant* Merchant);
+	void EndTrade();
+
+	UFUNCTION(BlueprintPure, Category = "RuinMates|Trade")
+	ARuinmatesMerchant* GetActiveMerchant() const { return ActiveMerchant; }
+
+	UFUNCTION(BlueprintPure, Category = "RuinMates|Trade")
+	bool IsTrading() const { return ActiveMerchant != nullptr; }
+
+	// Client requests. Only the item id / slot and quantity cross the wire; the server prices them.
+	void RequestBuyItem(FName ItemId, int32 Count);
+	void RequestSellItem(int32 SlotIndex, int32 Count);
 
 	// Body montages from the equipped weapon data. The server calls this directly.
 	// Clients call it from weapon OnRep so the third-person fire/reload actually plays.
@@ -217,6 +235,34 @@ protected:
 
 	UFUNCTION()
 	void OnRep_EquippedWeapon(ABaseWeapon* PreviousWeapon);
+
+	// ---- Trading (protected plumbing) ---------------------------------------
+	UPROPERTY(ReplicatedUsing = OnRep_ActiveMerchant)
+	TObjectPtr<ARuinmatesMerchant> ActiveMerchant;
+
+	UPROPERTY()
+	TObjectPtr<URuinmatesTradeScreen> TradeScreen;
+
+	UFUNCTION()
+	void OnRep_ActiveMerchant();
+
+	UFUNCTION(Server, Reliable)
+	void Server_BuyItem(FName ItemId, int32 Count);
+
+	UFUNCTION(Server, Reliable)
+	void Server_SellItem(int32 SlotIndex, int32 Count);
+
+	UFUNCTION(Server, Reliable)
+	void Server_EndTrade();
+
+	UFUNCTION(Client, Reliable)
+	void Client_TradeResult(bool bSuccess, const FText& Message);
+
+	void OpenTradeScreen();
+	void CloseTradeScreen();
+
+	// Server only: merchant still valid and in range.
+	bool ValidateTradeState(ARuinmatesMerchant*& OutMerchant);
 
 	UFUNCTION(Server, Reliable)
 	void Server_EquipWeapon(ABaseWeapon* NewWeapon);

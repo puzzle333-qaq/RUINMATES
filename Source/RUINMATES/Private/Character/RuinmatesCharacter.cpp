@@ -24,6 +24,10 @@
 #include "Interface/Interactable.h"
 #include "Inventory/RuinmatesBackpackComponent.h"
 #include "Inventory/RuinmatesLootContainer.h"
+#include "Inventory/RuinmatesMerchant.h"
+#include "Inventory/RuinmatesItemDatabaseSubsystem.h"
+#include "Game/RuinmatesGameState.h"
+#include "UI/RuinmatesTradeScreen.h"
 #include "UI/RuinmatesCrosshairWidget.h"
 #include "UI/RuinmatesTerminalScreen.h"
 #include "Engine/World.h"
@@ -145,6 +149,7 @@ void ARuinmatesCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& 
 	DOREPLIFETIME(ARuinmatesCharacter, bWantsToAim);
 	DOREPLIFETIME(ARuinmatesCharacter, EquippedWeapon);
 	DOREPLIFETIME(ARuinmatesCharacter, ActiveSearch);
+	DOREPLIFETIME(ARuinmatesCharacter, ActiveMerchant);
 }
 
 bool ARuinmatesCharacter::CanJumpInternal_Implementation() const
@@ -664,6 +669,12 @@ void ARuinmatesCharacter::BindInventoryInput(UInputComponent* PlayerInputCompone
 
 void ARuinmatesCharacter::ToggleBackpack()
 {
+	// Trading and looting are mutually exclusive: Tab first closes the trade screen.
+	if (IsTrading())
+	{
+		EndTrade();
+		return;
+	}
 	if (IsValid(InventoryScreen) && InventoryScreen->IsInViewport())
 	{
 		CloseTerminal();
@@ -729,16 +740,20 @@ void ARuinmatesCharacter::TryInteract()
 		float Best = MAX_FLT;
 		for (const FOverlapResult& Overlap : Overlaps)
 		{
-			ARuinmatesLootContainer* Container = Cast<ARuinmatesLootContainer>(Overlap.GetActor());
-			if (!Container)
+			AActor* Candidate = Overlap.GetActor();
+			if (!IsValid(Candidate) || !Candidate->GetClass()->ImplementsInterface(UInteractable::StaticClass()))
 			{
 				continue;
 			}
-			const float Distance = FVector::Dist(Container->GetActorLocation(), GetActorLocation());
-			if (Distance < Best && Distance <= Container->GetCloseDistance())
+			if (!IInteractable::Execute_CanInteract(Candidate, this))
+			{
+				continue;
+			}
+			const float Distance = FVector::Dist(Candidate->GetActorLocation(), GetActorLocation());
+			if (Distance < Best)
 			{
 				Best = Distance;
-				Target = Container;
+				Target = Candidate;
 			}
 		}
 	}
@@ -941,3 +956,297 @@ void ARuinmatesCharacter::Server_DiscardBackpackSlot_Implementation(int32 SlotIn
 }
 
 
+
+// ---------------------------------------------------------------------------
+// Trading
+// ---------------------------------------------------------------------------
+
+void ARuinmatesCharacter::BeginTrade(ARuinmatesMerchant* Merchant)
+{
+	if (!HasAuthority() || !IsValid(Merchant))
+	{
+		return;
+	}
+	// Only one interaction UI at a time: a trade closes the loot terminal.
+	if (IsValid(ActiveSearch))
+	{
+		EndSearch();
+	}
+	ActiveMerchant = Merchant;
+	if (IsLocallyControlled())
+	{
+		OpenTradeScreen();
+	}
+}
+
+void ARuinmatesCharacter::EndTrade()
+{
+	if (HasAuthority())
+	{
+		ActiveMerchant = nullptr;
+		if (IsLocallyControlled())
+		{
+			CloseTradeScreen();
+		}
+	}
+	else
+	{
+		Server_EndTrade();
+	}
+}
+
+void ARuinmatesCharacter::Server_EndTrade_Implementation()
+{
+	ActiveMerchant = nullptr;
+	if (IsLocallyControlled())
+	{
+		CloseTradeScreen();
+	}
+}
+
+void ARuinmatesCharacter::OnRep_ActiveMerchant()
+{
+	if (!IsLocallyControlled())
+	{
+		return;
+	}
+	if (IsValid(ActiveMerchant))
+	{
+		OpenTradeScreen();
+	}
+	else
+	{
+		CloseTradeScreen();
+	}
+}
+
+bool ARuinmatesCharacter::ValidateTradeState(ARuinmatesMerchant*& OutMerchant)
+{
+	OutMerchant = nullptr;
+	ARuinmatesMerchant* Merchant = ActiveMerchant;
+	if (!IsValid(Merchant) || !IsValid(Backpack))
+	{
+		return false;
+	}
+	// Players who walked away lose the trade instead of trading from across the map.
+	const float Distance = FVector::Dist(Merchant->GetActorLocation(), GetActorLocation());
+	if (Distance > Merchant->GetInteractionDistance() + 100.f)
+	{
+		ActiveMerchant = nullptr;
+		return false;
+	}
+	OutMerchant = Merchant;
+	return true;
+}
+
+void ARuinmatesCharacter::RequestBuyItem(FName ItemId, int32 Count)
+{
+	if (HasAuthority())
+	{
+		Server_BuyItem_Implementation(ItemId, Count);
+	}
+	else
+	{
+		Server_BuyItem(ItemId, Count);
+	}
+}
+
+void ARuinmatesCharacter::RequestSellItem(int32 SlotIndex, int32 Count)
+{
+	if (HasAuthority())
+	{
+		Server_SellItem_Implementation(SlotIndex, Count);
+	}
+	else
+	{
+		Server_SellItem(SlotIndex, Count);
+	}
+}
+
+void ARuinmatesCharacter::Server_BuyItem_Implementation(FName ItemId, int32 Count)
+{
+	ARuinmatesMerchant* Merchant = nullptr;
+	if (!ValidateTradeState(Merchant))
+	{
+		Client_TradeResult(false, NSLOCTEXT("RuinMates", "TradeNoMerchant", "商人不在范围内"));
+		return;
+	}
+	if (Count <= 0 || Count > 99)
+	{
+		Client_TradeResult(false, NSLOCTEXT("RuinMates", "TradeBadCount", "数量不合法"));
+		return;
+	}
+
+	URuinmatesItemDatabaseSubsystem* Database = URuinmatesItemDatabaseSubsystem::Get(this);
+	const FRuinmatesItemRow* Row = Database ? Database->FindItemDefinition(ItemId) : nullptr;
+	if (!Row)
+	{
+		Client_TradeResult(false, NSLOCTEXT("RuinMates", "TradeUnknownItem", "未知物品"));
+		return;
+	}
+	if (!Row->bCanBuy || !Merchant->SellsItem(ItemId))
+	{
+		Client_TradeResult(false, NSLOCTEXT("RuinMates", "TradeNotSold", "该商人不出售此物品"));
+		return;
+	}
+
+	// Server-side pricing only. The client never sends a price.
+	const int64 Total64 = static_cast<int64>(FMath::Max(0, Row->BuyPrice)) * static_cast<int64>(Count);
+	if (Total64 <= 0 || Total64 > MAX_int32)
+	{
+		Client_TradeResult(false, NSLOCTEXT("RuinMates", "TradeBadPrice", "价格无效"));
+		return;
+	}
+	const int32 TotalPrice = static_cast<int32>(Total64);
+
+	ARuinmatesGameState* GameState = GetWorld() ? GetWorld()->GetGameState<ARuinmatesGameState>() : nullptr;
+	if (!GameState || !GameState->HasEnoughFunds(TotalPrice))
+	{
+		Client_TradeResult(false, NSLOCTEXT("RuinMates", "TradeNoFunds", "团队资金不足"));
+		return;
+	}
+
+	const FRuinmatesItemStack Stack = Database->CreateItemStack(ItemId, Count);
+	if (!IsValid(Backpack) || !Backpack->CanAddExactCount(Stack, Count))
+	{
+		Client_TradeResult(false, NSLOCTEXT("RuinMates", "TradeNoSpace", "背包空间不足"));
+		return;
+	}
+
+	// All-or-nothing: charge, then deliver; refund if the delivery somehow fails.
+	if (!GameState->TrySpendFunds(TotalPrice))
+	{
+		Client_TradeResult(false, NSLOCTEXT("RuinMates", "TradeNoFunds", "团队资金不足"));
+		return;
+	}
+	if (!Backpack->TryAddExact(Stack, Count))
+	{
+		GameState->AddFunds(TotalPrice);
+		Client_TradeResult(false, NSLOCTEXT("RuinMates", "TradeNoSpace", "背包空间不足"));
+		return;
+	}
+
+	Client_TradeResult(true, FText::Format(
+		NSLOCTEXT("RuinMates", "TradeBought", "购买 {0} ×{1}，花费 {2}"),
+		Row->DisplayName, FText::AsNumber(Count), FText::AsNumber(TotalPrice)));
+}
+
+void ARuinmatesCharacter::Server_SellItem_Implementation(int32 SlotIndex, int32 Count)
+{
+	ARuinmatesMerchant* Merchant = nullptr;
+	if (!ValidateTradeState(Merchant))
+	{
+		Client_TradeResult(false, NSLOCTEXT("RuinMates", "TradeNoMerchant", "商人不在范围内"));
+		return;
+	}
+	if (!Merchant->AllowsSelling())
+	{
+		Client_TradeResult(false, NSLOCTEXT("RuinMates", "TradeNoSell", "该商人不收货"));
+		return;
+	}
+	if (!IsValid(Backpack) || !Backpack->GetSlots().IsValidIndex(SlotIndex) || Count <= 0)
+	{
+		Client_TradeResult(false, NSLOCTEXT("RuinMates", "TradeBadSlot", "格子无效"));
+		return;
+	}
+
+	// Read the stack on the server; item id and quality are never taken from the client.
+	const FRuinmatesItemStack Stack = Backpack->GetSlots()[SlotIndex];
+	if (Stack.IsEmpty())
+	{
+		Client_TradeResult(false, NSLOCTEXT("RuinMates", "TradeBadSlot", "格子无效"));
+		return;
+	}
+
+	URuinmatesItemDatabaseSubsystem* Database = URuinmatesItemDatabaseSubsystem::Get(this);
+	const FRuinmatesItemRow* Row = Database ? Database->FindItemDefinition(Stack.ItemId) : nullptr;
+	if (!Row)
+	{
+		Client_TradeResult(false, NSLOCTEXT("RuinMates", "TradeUnknownItem", "未知物品"));
+		return;
+	}
+	if (!Row->bCanSell)
+	{
+		Client_TradeResult(false, NSLOCTEXT("RuinMates", "TradeSellBlocked", "该物品不能出售"));
+		return;
+	}
+
+	const int32 Quantity = FMath::Clamp(Count, 1, Stack.Count);
+	const int64 Total64 = static_cast<int64>(FMath::Max(0, Row->SellPrice)) * static_cast<int64>(Quantity);
+	if (Total64 <= 0 || Total64 > MAX_int32)
+	{
+		Client_TradeResult(false, NSLOCTEXT("RuinMates", "TradeBadPrice", "价格无效"));
+		return;
+	}
+
+	ARuinmatesGameState* GameState = GetWorld() ? GetWorld()->GetGameState<ARuinmatesGameState>() : nullptr;
+	if (!GameState)
+	{
+		Client_TradeResult(false, NSLOCTEXT("RuinMates", "TradeNoWallet", "团队资金不可用"));
+		return;
+	}
+
+	if (!Backpack->RemoveItemAt(SlotIndex, Quantity))
+	{
+		Client_TradeResult(false, NSLOCTEXT("RuinMates", "TradeBadSlot", "格子无效"));
+		return;
+	}
+	GameState->AddFunds(static_cast<int32>(Total64));
+
+	Client_TradeResult(true, FText::Format(
+		NSLOCTEXT("RuinMates", "TradeSold", "出售 {0} ×{1}，获得 {2}"),
+		Row->DisplayName, FText::AsNumber(Quantity), FText::AsNumber(static_cast<int32>(Total64))));
+}
+
+void ARuinmatesCharacter::Client_TradeResult_Implementation(bool bSuccess, const FText& Message)
+{
+	if (IsValid(TradeScreen))
+	{
+		TradeScreen->ShowResult(bSuccess, Message);
+	}
+}
+
+void ARuinmatesCharacter::OpenTradeScreen()
+{
+	APlayerController* PlayerController = Cast<APlayerController>(GetController());
+	if (!IsLocallyControlled() || !PlayerController || !IsValid(ActiveMerchant))
+	{
+		return;
+	}
+	if (!TradeScreen)
+	{
+		TradeScreen = CreateWidget<URuinmatesTradeScreen>(PlayerController, URuinmatesTradeScreen::StaticClass());
+	}
+	if (!TradeScreen)
+	{
+		return;
+	}
+	if (!TradeScreen->IsInViewport())
+	{
+		TradeScreen->AddToViewport(31);
+	}
+	TradeScreen->SetContext(this, ActiveMerchant);
+
+	FInputModeGameAndUI InputMode;
+	InputMode.SetHideCursorDuringCapture(false);
+	InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+	InputMode.SetWidgetToFocus(TradeScreen->TakeWidget());
+	PlayerController->SetInputMode(InputMode);
+	PlayerController->SetShowMouseCursor(true);
+}
+
+void ARuinmatesCharacter::CloseTradeScreen()
+{
+	if (IsValid(TradeScreen) && TradeScreen->IsInViewport())
+	{
+		TradeScreen->RemoveFromParent();
+	}
+	if (APlayerController* PlayerController = Cast<APlayerController>(GetController()))
+	{
+		if (IsLocallyControlled())
+		{
+			PlayerController->SetShowMouseCursor(false);
+			PlayerController->SetInputMode(FInputModeGameOnly());
+		}
+	}
+}

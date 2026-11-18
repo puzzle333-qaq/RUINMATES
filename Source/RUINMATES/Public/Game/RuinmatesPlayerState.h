@@ -40,8 +40,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "RuinMates|Save")
 	void SetTalentIds(const TArray<FName>& InTalents);
 
+	// Compatibility wrapper: the wallet lives on ARuinmatesGameState, not per player.
 	UFUNCTION(BlueprintPure, Category = "RuinMates|Save")
-	int32 GetTeamFunds() const { return TeamFunds; }
+	int32 GetTeamFunds() const;
 
 	UFUNCTION(BlueprintCallable, Category = "RuinMates|Save")
 	void AddTeamFunds(int32 Amount);
@@ -61,6 +62,4 @@ protected:
 	UPROPERTY(Replicated)
 	TArray<FName> TalentIds;
 
-	UPROPERTY(Replicated)
-	int32 TeamFunds = 0;
 };

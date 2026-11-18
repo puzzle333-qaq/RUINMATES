@@ -1,6 +1,7 @@
 #include "Game/RuinmatesGameMode.h"
 
 #include "Character/RuinmatesCharacter.h"
+#include "Game/RuinmatesGameState.h"
 #include "Game/RuinmatesPlayerState.h"
 #include "GameFramework/GameSession.h"
 #include "Save/RuinmatesSaveSubsystem.h"
@@ -9,6 +10,7 @@ ARuinmatesGameMode::ARuinmatesGameMode()
 {
 	MaxPartySize = 4;
 	PlayerStateClass = ARuinmatesPlayerState::StaticClass();
+	GameStateClass = ARuinmatesGameState::StaticClass();
 	DefaultPawnClass = ARuinmatesCharacter::StaticClass();
 }
 
