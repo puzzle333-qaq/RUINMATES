@@ -9,7 +9,7 @@ class USpringArmComponent;
 class UStatsComponent;
 class UWeaponPoseComponent;
 class URuinmatesBackpackComponent;
-class URuinmatesInventoryScreen;
+class URuinmatesTerminalScreen;
 class ARuinmatesLootContainer;
 class UWeaponInventoryComponent;
 class ABaseWeapon;
@@ -79,6 +79,7 @@ public:
 	URuinmatesBackpackComponent* GetBackpack() const { return Backpack; }
 
 	void ToggleBackpack();
+	void CloseTerminal();
 	void TryInteract();
 	void BeginSearch(ARuinmatesLootContainer* Container);
 	void RequestPickup(int32 SlotIndex);
@@ -235,5 +236,5 @@ protected:
 	TObjectPtr<URuinmatesCrosshairWidget> CrosshairWidget;
 
 	UPROPERTY()
-	TObjectPtr<URuinmatesInventoryScreen> InventoryScreen;
+	TObjectPtr<URuinmatesTerminalScreen> InventoryScreen;
 };

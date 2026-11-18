@@ -25,7 +25,7 @@
 #include "Inventory/RuinmatesBackpackComponent.h"
 #include "Inventory/RuinmatesLootContainer.h"
 #include "UI/RuinmatesCrosshairWidget.h"
-#include "UI/RuinmatesInventoryScreen.h"
+#include "UI/RuinmatesTerminalScreen.h"
 #include "Engine/World.h"
 #include "CollisionQueryParams.h"
 
@@ -648,28 +648,32 @@ void ARuinmatesCharacter::BindInventoryInput(UInputComponent* PlayerInputCompone
 	}
 	PlayerInputComponent->BindKey(EKeys::Tab, IE_Pressed, this, &ARuinmatesCharacter::ToggleBackpack);
 	PlayerInputComponent->BindKey(EKeys::F, IE_Pressed, this, &ARuinmatesCharacter::TryInteract);
-	PlayerInputComponent->BindKey(EKeys::Escape, IE_Pressed, this, &ARuinmatesCharacter::CloseInventoryScreen);
+	PlayerInputComponent->BindKey(EKeys::Escape, IE_Pressed, this, &ARuinmatesCharacter::CloseTerminal);
 }
 
 void ARuinmatesCharacter::ToggleBackpack()
 {
 	if (IsValid(InventoryScreen) && InventoryScreen->IsInViewport())
 	{
-		if (IsValid(ActiveSearch))
-		{
-			if (HasAuthority())
-			{
-				EndSearch();
-			}
-			else
-			{
-				Server_StopSearch();
-			}
-		}
-		CloseInventoryScreen();
+		CloseTerminal();
 		return;
 	}
 	OpenInventoryScreen();
+}
+
+void ARuinmatesCharacter::CloseTerminal()
+{
+	if (IsValid(ActiveSearch))
+	{
+		if (HasAuthority())
+		{
+			EndSearch();
+			return;
+		}
+		Server_StopSearch();
+		ActiveSearch = nullptr;
+	}
+	CloseInventoryScreen();
 }
 
 void ARuinmatesCharacter::TryInteract()
@@ -828,7 +832,7 @@ void ARuinmatesCharacter::OpenInventoryScreen()
 	}
 	if (!InventoryScreen)
 	{
-		InventoryScreen = CreateWidget<URuinmatesInventoryScreen>(PlayerController, URuinmatesInventoryScreen::StaticClass());
+		InventoryScreen = CreateWidget<URuinmatesTerminalScreen>(PlayerController, URuinmatesTerminalScreen::StaticClass());
 	}
 	if (!InventoryScreen)
 	{
