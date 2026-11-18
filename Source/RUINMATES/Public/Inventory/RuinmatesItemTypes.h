@@ -1,7 +1,10 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Engine/DataTable.h"
 #include "RuinmatesItemTypes.generated.h"
+
+class UTexture2D;
 
 // Loot rarity. Colors stay muted except for the top two tiers.
 UENUM(BlueprintType)
@@ -12,6 +15,61 @@ enum class ERuinmatesItemQuality : uint8
 	Advanced UMETA(DisplayName = "高级"),
 	Rare UMETA(DisplayName = "稀有"),
 	Precious UMETA(DisplayName = "珍贵")
+};
+
+// Static inventory category. Used by the item database, filters and merchant lists.
+UENUM(BlueprintType)
+enum class ERuinmatesItemCategory : uint8
+{
+	Consumable UMETA(DisplayName = "消耗品"),
+	Ammo UMETA(DisplayName = "弹药"),
+	Material UMETA(DisplayName = "材料"),
+	Valuable UMETA(DisplayName = "贵重物品"),
+	Weapon UMETA(DisplayName = "武器"),
+	Equipment UMETA(DisplayName = "装备"),
+	Quest UMETA(DisplayName = "任务物品")
+};
+
+// One row of the single authoritative item database (DT_Items). Static data only:
+// it never carries a held count or a search reveal state.
+USTRUCT(BlueprintType)
+struct RUINMATES_API FRuinmatesItemRow : public FTableRowBase
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RuinMates|Item")
+	FText DisplayName;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RuinMates|Item")
+	FText Description;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RuinMates|Item")
+	ERuinmatesItemCategory Category = ERuinmatesItemCategory::Material;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RuinMates|Item")
+	ERuinmatesItemQuality Quality = ERuinmatesItemQuality::Common;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RuinMates|Item")
+	TSoftObjectPtr<UTexture2D> Icon;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RuinMates|Item", meta = (ClampMin = "1"))
+	int32 MaxStack = 1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RuinMates|Item", meta = (ClampMin = "0"))
+	int32 BuyPrice = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RuinMates|Item", meta = (ClampMin = "0"))
+	int32 SellPrice = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RuinMates|Item")
+	bool bCanBuy = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RuinMates|Item")
+	bool bCanSell = true;
+
+	// Upgrade parts are not only vendor trash. The base-upgrade use comes later.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RuinMates|Item")
+	bool bUpgradeMaterial = false;
 };
 
 // Permanent backpack growth. Slot counts are a starting pass, not a final economy.
@@ -67,6 +125,30 @@ struct RUINMATES_API FRuinmatesItemStack
 	{
 		return !IsEmpty() && !Other.IsEmpty() && ItemId == Other.ItemId && Quality == Other.Quality && Count < MaxStack;
 	}
+};
+
+USTRUCT(BlueprintType)
+struct RUINMATES_API FRuinmatesLootEntry
+{
+	GENERATED_BODY()
+
+	// Preferred source: an ItemId resolved through the item database.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "RuinMates|Loot")
+	FName ItemId;
+
+	// Legacy template kept so already-authored LootPool entries keep working. Only used when
+	// ItemId is empty or unknown to the database.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "RuinMates|Loot")
+	FRuinmatesItemStack Item;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0"))
+	int32 Weight = 100;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "1"))
+	int32 MinCount = 1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "1"))
+	int32 MaxCount = 1;
 };
 
 namespace RuinmatesItems

@@ -71,6 +71,19 @@ protected:
 	UPROPERTY(ReplicatedUsing = OnRep_Contents)
 	TArray<FRuinmatesItemStack> Contents;
 
+	UPROPERTY(EditAnywhere, Category = "RuinMates|Loot")
+	TArray<FRuinmatesLootEntry> LootPool;
+
+	UPROPERTY(EditAnywhere, Category = "RuinMates|Loot",
+		meta = (ClampMin = "0"))
+	int32 MinLootItems = 2;
+	
+	UPROPERTY(EditAnywhere, Category = "RuinMates|Loot",
+		meta = (ClampMin = "0"))
+	int32 MaxLootItems = 4;
+	
+	void GenerateLoot();
+
 	UFUNCTION()
 	void OnRep_Contents();
 

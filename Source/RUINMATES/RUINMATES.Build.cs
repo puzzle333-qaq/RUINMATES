@@ -19,7 +19,8 @@ public class RUINMATES : ModuleRules
 			"OnlineSubsystemUtils",
 			"Slate",
 			"SlateCore",
-			"UMG"
+			"UMG",
+			"DeveloperSettings"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[]

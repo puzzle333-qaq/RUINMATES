@@ -5,6 +5,7 @@
 #include "Components/TextRenderComponent.h"
 #include "Engine/World.h"
 #include "Inventory/RuinmatesBackpackComponent.h"
+#include "Inventory/RuinmatesItemDatabaseSubsystem.h"
 #include "Net/UnrealNetwork.h"
 #include "TimerManager.h"
 
@@ -23,6 +24,30 @@ namespace
 		Stack.Description = Description;
 		Stack.bRevealed = false;
 		return Stack;
+	}
+	// Default loot prefers the item database and only falls back to the literal template when the
+	// database or the row is missing (e.g. bare automation worlds without a game instance).
+	FRuinmatesItemStack MakeLootFromDatabase(
+		const UObject* WorldContext,
+		const FName& Id,
+		const FText& Name,
+		ERuinmatesItemQuality Quality,
+		int32 Value,
+		int32 Count,
+		int32 MaxStack,
+		bool bUpgrade,
+		const FText& Description)
+	{
+		if (const URuinmatesItemDatabaseSubsystem* Database = URuinmatesItemDatabaseSubsystem::Get(WorldContext))
+		{
+			if (Database->IsValidItemId(Id))
+			{
+				FRuinmatesItemStack Stack = Database->CreateItemStack(Id, Count);
+				Stack.bRevealed = false;
+				return Stack;
+			}
+		}
+		return MakeLoot(Id, Name, Quality, Value, Count, MaxStack, bUpgrade, Description);
 	}
 }
 
@@ -44,28 +69,37 @@ ARuinmatesLootContainer::ARuinmatesLootContainer()
 	Label->SetHorizontalAlignment(EHTA_Center);
 	Label->SetText(NSLOCTEXT("RuinMates", "LootLabel", "物资"));
 	ContainerName = NSLOCTEXT("RuinMates", "DefaultContainer", "废弃研究所储物箱");
-	EnsureDefaultLoot();
 }
 
 void ARuinmatesLootContainer::BeginPlay()
 {
-	Super::BeginPlay();
-	if (HasAuthority() && AuthoredLoot.Num() > 0)
-	{
-		Contents = AuthoredLoot;
-		for (FRuinmatesItemStack& Stack : Contents)
-		{
-			Stack.bRevealed = false;
-		}
-	}
-	else if (HasAuthority())
-	{
-		EnsureDefaultLoot();
-	}
-	if (IsValid(Label))
-	{
-		Label->SetText(ContainerName);
-	}
+    Super::BeginPlay();
+
+    if (HasAuthority())
+    {
+        if (!LootPool.IsEmpty())
+        {
+            GenerateLoot();
+        }
+        else if (!AuthoredLoot.IsEmpty())
+        {
+            Contents = AuthoredLoot;
+        }
+        else
+        {
+            EnsureDefaultLoot();
+        }
+
+        for (FRuinmatesItemStack& Stack : Contents)
+        {
+            Stack.bRevealed = false;
+        }
+    }
+
+    if (IsValid(Label))
+    {
+        Label->SetText(ContainerName);
+    }
 }
 
 void ARuinmatesLootContainer::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -188,12 +222,12 @@ void ARuinmatesLootContainer::EnsureDefaultLoot()
 		return;
 	}
 
-	Contents.Add(MakeLoot(TEXT("Bandage"), NSLOCTEXT("RuinMates", "LootBandage", "绷带"), ERuinmatesItemQuality::Common, 120, 2, 5, false, NSLOCTEXT("RuinMates", "LootBandageDesc", "止血用的旧绷带。")));
-	Contents.Add(MakeLoot(TEXT("Cans"), NSLOCTEXT("RuinMates", "LootCans", "罐头"), ERuinmatesItemQuality::Common, 80, 3, 5, false, NSLOCTEXT("RuinMates", "LootCansDesc", "还能吃的应急口粮。")));
-	Contents.Add(MakeLoot(TEXT("AmmoBox"), NSLOCTEXT("RuinMates", "LootAmmo", "弹药箱"), ERuinmatesItemQuality::Fine, 480, 1, 1, false, NSLOCTEXT("RuinMates", "LootAmmoDesc", "没有开封的手枪弹。")));
-	Contents.Add(MakeLoot(TEXT("Circuit"), NSLOCTEXT("RuinMates", "LootCircuit", "电路板"), ERuinmatesItemQuality::Advanced, 1600, 1, 1, true, NSLOCTEXT("RuinMates", "LootCircuitDesc", "可以拿去升级基地的零件。")));
-	Contents.Add(MakeLoot(TEXT("Gland"), NSLOCTEXT("RuinMates", "LootGland", "异种腺体"), ERuinmatesItemQuality::Rare, 6400, 1, 1, true, NSLOCTEXT("RuinMates", "LootGlandDesc", "研究所留下的样本，不是只拿去卖的。")));
-	Contents.Add(MakeLoot(TEXT("Core"), NSLOCTEXT("RuinMates", "LootCore", "核心碎片"), ERuinmatesItemQuality::Precious, 18000, 1, 1, true, NSLOCTEXT("RuinMates", "LootCoreDesc", "打开高级装备锁需要的碎片。")));
+	Contents.Add(MakeLootFromDatabase(this, TEXT("Bandage"), NSLOCTEXT("RuinMates", "LootBandage", "绷带"), ERuinmatesItemQuality::Common, 120, 2, 5, false, NSLOCTEXT("RuinMates", "LootBandageDesc", "止血用的旧绷带。")));
+	Contents.Add(MakeLootFromDatabase(this, TEXT("Cans"), NSLOCTEXT("RuinMates", "LootCans", "罐头"), ERuinmatesItemQuality::Common, 80, 3, 5, false, NSLOCTEXT("RuinMates", "LootCansDesc", "还能吃的应急口粮。")));
+	Contents.Add(MakeLootFromDatabase(this, TEXT("AmmoBox"), NSLOCTEXT("RuinMates", "LootAmmo", "弹药箱"), ERuinmatesItemQuality::Fine, 480, 1, 1, false, NSLOCTEXT("RuinMates", "LootAmmoDesc", "没有开封的手枪弹。")));
+	Contents.Add(MakeLootFromDatabase(this, TEXT("Circuit"), NSLOCTEXT("RuinMates", "LootCircuit", "电路板"), ERuinmatesItemQuality::Advanced, 1600, 1, 1, true, NSLOCTEXT("RuinMates", "LootCircuitDesc", "可以拿去升级基地的零件。")));
+	Contents.Add(MakeLootFromDatabase(this, TEXT("Gland"), NSLOCTEXT("RuinMates", "LootGland", "异种腺体"), ERuinmatesItemQuality::Rare, 6400, 1, 1, true, NSLOCTEXT("RuinMates", "LootGlandDesc", "研究所留下的样本，不是只拿去卖的。")));
+	Contents.Add(MakeLootFromDatabase(this, TEXT("Core"), NSLOCTEXT("RuinMates", "LootCore", "核心碎片"), ERuinmatesItemQuality::Precious, 18000, 1, 1, true, NSLOCTEXT("RuinMates", "LootCoreDesc", "打开高级装备锁需要的碎片。")));
 }
 
 void ARuinmatesLootContainer::StartRevealTimer()
@@ -225,4 +259,115 @@ void ARuinmatesLootContainer::RevealNext()
 	{
 		World->GetTimerManager().ClearTimer(RevealTimer);
 	}
+}
+
+void ARuinmatesLootContainer::GenerateLoot()
+{
+	if(!HasAuthority())
+	{
+		return;
+	}
+	if(LootPool.IsEmpty())
+	{
+		return;
+	}
+	const int32 LootCount = FMath::RandRange(FMath::Max(0,MinLootItems),MaxLootItems);
+	TArray<FRuinmatesLootEntry> AvailablePool = LootPool;
+
+	for(int32 i = 0;i< LootCount;++i)
+	{
+		if(AvailablePool.IsEmpty())
+		{
+			break;
+		}
+
+		int32 TotalWeight = 0;
+
+		for (const FRuinmatesLootEntry & Entry : AvailablePool)
+		{
+			if (Entry.Weight > 0 && !Entry.Item.ItemId.IsNone())
+			{
+				TotalWeight += Entry.Weight;
+			}
+		}
+
+		if(TotalWeight <= 0)
+		{
+			break;
+		}
+
+		const int32 Roll = FMath::RandRange(1,TotalWeight);
+
+		int32 CurrentWeight = 0;
+		int32 SelectedIndex = INDEX_NONE;
+
+		for(int32 j = 0; j < AvailablePool.Num();++j)
+		{
+			const FRuinmatesLootEntry& Entry = AvailablePool[j];
+
+			if (Entry.Weight <= 0 || Entry.Item.ItemId.IsNone())
+			{
+				continue;
+			}
+			
+			CurrentWeight += Entry.Weight;
+			
+			if (Roll <= CurrentWeight)
+			{
+				SelectedIndex = j;
+				break;
+			}
+		}
+
+		if (AvailablePool.IsValidIndex(SelectedIndex))
+        {
+            const FRuinmatesLootEntry& Entry =
+                AvailablePool[SelectedIndex];
+
+            // Prefer the authoritative database; fall back to the legacy embedded template so
+            // containers authored before the database keep generating the same items.
+            const FName EntryItemId = !Entry.ItemId.IsNone() ? Entry.ItemId : Entry.Item.ItemId;
+            FRuinmatesItemStack Stack;
+
+            URuinmatesItemDatabaseSubsystem* Database = URuinmatesItemDatabaseSubsystem::Get(this);
+            if (Database && Database->IsValidItemId(EntryItemId))
+            {
+                const int32 StackMax = FMath::Max(1, Database->GetMaxStack(EntryItemId));
+                const int32 MinCount = FMath::Clamp(Entry.MinCount, 1, StackMax);
+                const int32 MaxCount = FMath::Clamp(Entry.MaxCount, MinCount, StackMax);
+                Stack = Database->CreateItemStack(EntryItemId, FMath::RandRange(MinCount, MaxCount));
+            }
+            else
+            {
+                Stack = Entry.Item;
+
+                const int32 MaxStack =
+                    FMath::Max(1, Stack.MaxStack);
+
+                const int32 MinCount =
+                    FMath::Clamp(Entry.MinCount, 1, MaxStack);
+
+                const int32 MaxCount =
+                    FMath::Clamp(Entry.MaxCount, MinCount, MaxStack);
+
+                Stack.MaxStack = MaxStack;
+                Stack.Count = FMath::RandRange(MinCount, MaxCount);
+            }
+
+            if (Stack.IsEmpty())
+            {
+                AvailablePool.RemoveAt(SelectedIndex);
+                continue;
+            }
+
+            Stack.bRevealed = false;
+
+            Contents.Add(Stack);
+
+            // 防止同一个掉落项被重复抽取
+            AvailablePool.RemoveAt(SelectedIndex);
+        }
+    }
+
+    OnChanged.Broadcast();
 }
