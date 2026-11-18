@@ -526,7 +526,18 @@ void ARuinmatesCharacter::PlayEquippedMontages(bool bJustEquipped, bool bJustFir
 	}
 	if (bJustFired)
 	{
-		PlayBodyMontage(Data->ThirdPersonMontages.ResolveFireMontage());
+		// FireTime defaults to 0.1s while the pistol fire montage is 0.667s. Restarting the montage on
+		// every shot keeps it at its first frames, so the shot pose never reaches full slot weight and
+		// the locomotion pose keeps the upper body (guns look dead while moving and shooting).
+		// Let a running fire montage finish instead of restarting it.
+		if (UAnimMontage* FireMontage = Data->ThirdPersonMontages.ResolveFireMontage())
+		{
+			UAnimInstance* Anim = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr;
+			if (!Anim || !Anim->Montage_IsPlaying(FireMontage))
+			{
+				PlayBodyMontage(FireMontage);
+			}
+		}
 	}
 	if (bJustReloaded)
 	{

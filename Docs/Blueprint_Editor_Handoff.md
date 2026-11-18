@@ -1,6 +1,6 @@
 # RUINMATES 蓝图 / 编辑器交接单
 
-更新时间：2026-11-18 01:49（America/New_York）  
+更新时间：2026-11-18 05:50（America/New_York）  
 本地提交：在 `10a9430`（蓝图交接单）之上增加 `UWeaponInventoryComponent` 自动生成默认武器。未推送，没有远程仓库。提交哈希以仓库 tip 为准。
 
 ## 先读这段
@@ -203,3 +203,80 @@ C++ 挂载已经在 `EquipWeapon` 里自动调用 `UWeaponMountComponent::Attach
 - EOS / Steam 登录、SDK、凭据、真实房间：未接。缺这些就不能声称可以开平台房间。
 - 远程仓库：由你稍后创建和推送，本地不要用 `gh`。
 - 需要你完成的阻塞：第 1–5 节的蓝图父类、输入、武器数据、AnimBP FABRIK、网格/Montage Migrate。第 6 节地图名是切图的阻塞。M1/M2/M3 的运行验收是独立阻塞，不能用自动化通过代替。
+
+---
+
+## 9. 换弹滑步修复：上半身分层（2026-11-18，PIE 已确认换弹正常）
+
+### 根因
+
+`ABP_Unarmed` 的 AnimGraph 原来是一条直线，Slot 直接盖在状态机输出上：
+
+```
+Control Rig ← Slot 'DefaultSlot' ← State Machine 'Main States'
+```
+
+整张图里没有 `Layered Blend Per Bone`，所以 `DefaultSlot` 拿到 Montage 后是**整身替换**。
+换弹 Montage（`MM_Pistol_Reload_Montage`，2.0s，槽位 `DefaultSlot`）是全身片段，连腿一起换掉，
+换弹期间下半身不动而人还在移动，于是滑步。
+
+### 修复（只保留这一个改动）
+
+状态机输出先存成缓存姿态，再由两路读取（不走两次状态机），Slot 与分层节点都读这份缓存：
+
+```
+State Machine 'Main States'
+   └─> Save Cached Pose 'RuinmatesBodyPose'
+          ├─> Use Cached Pose ──> Layered Blend Per Bone .BasePose   （pelvis / 腿，来自走位）
+          └─> Use Cached Pose ──> Slot 'DefaultSlot' ──> Layered .BlendPose0 （spine_01 及子骨骼）
+                                                       └─> Control Rig ──> 后续原链路
+```
+
+分层节点参数：`Blend Mode = BranchFilter`，`BranchFilters = spine_01`、`BlendDepth = 0`，
+`BlendWeights = 1.0`。
+
+- 没 Montage 时 Slot 直通，idle 与原始资产逐骨骼一致（见下面实测数字）。
+- 有 Montage 时只覆盖 spine_01 分支，pelvis 和腿继续走走位动画。
+- 资产改动只有 `Content/RUINMATES/Blueprint/Character/ABP_Unarmed.uasset`。
+  Montage 资产没动，槽位仍是 `DefaultSlot`。
+- 改前备份：`Saved/AnimBackup/ABP_Unarmed_before_upperbody.uasset`（原始，未分层），
+  回滚直接覆盖回 `Content/RUINMATES/Blueprint/Character/ABP_Unarmed.uasset`。
+- 这次没有留 C++ 改动，也没有留诊断用的 Editor 命令舱。
+
+**为什么必须缓存，不能把状态机接两路**：`FAnimNode_StateMachine` 一帧内被求值两次时，
+第二次返回的是退化姿态（参考姿态）。第一版把状态机同时接到 Slot 源和分层 BasePose，
+结果 idle 上半身冻在参考姿态（用户看到的"变 A-pose"）。`Save/Use Cached Pose` 只求值一次，
+两路各自拷贝，问题消失。
+
+### 实测数据（无界面姿态探针，比原始资产对照）
+
+`upperarm_r / lowerarm_r / spine_03 / neck_01 / thigh_l` 相对参考姿态的角度差：
+
+| 场景 | 原始资产 | 第一版（状态机接两路，坏） | 现在（缓存姿态） |
+|---|---|---|---|
+| idle | 31.58 / 36.34 / 23.71 / 21.48 / 18.15 | 22.05 / 22.05 / 22.05 / 22.05 / 18.15（上半身冻结） | 31.58 / 36.34 / 23.71 / 21.48 / 18.15 |
+| 换弹 | 66.31 / 86.03 / 4.58 / 9.72 / **23.65** | 55.19 / 72.70 / 17.98 / 19.52 / 18.19 | 55.19 / 72.70 / 17.98 / 19.52 / **18.19** |
+
+关键看 `thigh_l`：原始资产换弹时是 23.65（腿被换弹片段替换），现在是 18.19（≈ idle 的 18.15，
+腿保持走位），idle 的五个数值与原始资产完全一致。
+
+### 注意
+
+- 分层作用在全身 Slot 上，开火 Montage 走同一个 Slot，所以开火也只覆盖上半身。
+  开火手感如果还要调，是独立的一轮，不在这次范围内。
+- 装备 Montage 仍是空的（`3P.Equip = <null>`），所以没有拔枪动作。
+- 以后要再改这张图：编辑器里打开 `ABP_Unarmed` → AnimGraph，确认
+  `Save Cached Pose 'RuinmatesBodyPose'` 有两路 `Use Cached Pose`，
+  `Layered Blend Per Bone` 的 Base Pose 接腿那路、Blend Pose 0 接 Slot，分支固定 `spine_01`。
+  不要把同一个状态机直接接两路。
+
+### 自动化命令（顺带更正）
+
+`RuinMates` 现在是 21 项，UE 5.8 里 `Automation RunFilter RuinMates` 已经不认（会报
+`RuinMates is not a valid flag to filter on`），要用：
+
+```
+-ExecCmds="Automation RunTests RuinMates; Quit" -TestExit="Automation Test Queue Empty"
+```
+
+21/21 Success。
