@@ -596,7 +596,8 @@ void ABaseWeapon::SpawnFireEffectLocal(const FVector& ImpactPoint)
 		UNiagaraComponent* Effect = nullptr;
 		if (Socket.IsNone())
 		{
-			Effect = UNiagaraFunctionLibrary::SpawnSystemAtLocation(this, System, Muzzle, MuzzleRotation);
+			Effect = UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+				this, System, Muzzle, MuzzleRotation, FVector::OneVector, true, false, ENCPoolMethod::None, false);
 		}
 		else
 		{
@@ -607,24 +608,29 @@ void ABaseWeapon::SpawnFireEffectLocal(const FVector& ImpactPoint)
 				FVector::ZeroVector,
 				MuzzleRotation,
 				EAttachLocation::SnapToTarget,
-				true);
+				true,
+				false,
+				ENCPoolMethod::None,
+				false);
 		}
 		if (!Effect)
 		{
 			return;
 		}
-		Effect->SetVariableBool(TEXT("Trigger"), true);
+		Effect->SetVariableBool(TEXT("User.Trigger"), true);
 		if (bTracer)
 		{
-			Effect->SetVariableVec3(TEXT("MuzzlePosition"), Muzzle);
+			Effect->SetVariableVec3(TEXT("User.MuzzlePosition"), Muzzle);
+			Effect->SetVariablePosition(TEXT("User.MuzzlePosition"), Muzzle);
 			TArray<FVector> Impacts;
 			Impacts.Add(ImpactPoint);
-			UNiagaraDataInterfaceArrayFunctionLibrary::SetNiagaraArrayVector(Effect, TEXT("ImpactPositions"), Impacts);
+			UNiagaraDataInterfaceArrayFunctionLibrary::SetNiagaraArrayVector(Effect, TEXT("User.ImpactPositions"), Impacts);
 		}
 		else
 		{
-			Effect->SetVariableVec3(TEXT("Direction"), Direction);
+			Effect->SetVariableVec3(TEXT("User.Direction"), Direction);
 		}
+		Effect->Activate(true);
 	};
 
 	SpawnOne(MuzzleSystem, false);
