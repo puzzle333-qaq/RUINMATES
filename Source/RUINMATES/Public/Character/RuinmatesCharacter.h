@@ -8,6 +8,9 @@ class UCameraComponent;
 class USpringArmComponent;
 class UStatsComponent;
 class UWeaponPoseComponent;
+class URuinmatesBackpackComponent;
+class URuinmatesInventoryScreen;
+class ARuinmatesLootContainer;
 class UWeaponInventoryComponent;
 class ABaseWeapon;
 class UAnimMontage;
@@ -72,6 +75,16 @@ public:
 	UFUNCTION(BlueprintPure, Category = "RuinMates|Weapon")
 	UWeaponInventoryComponent* GetWeaponInventory() const { return WeaponInventory; }
 
+	UFUNCTION(BlueprintPure, Category = "RuinMates|Backpack")
+	URuinmatesBackpackComponent* GetBackpack() const { return Backpack; }
+
+	void ToggleBackpack();
+	void TryInteract();
+	void BeginSearch(ARuinmatesLootContainer* Container);
+	void RequestPickup(int32 SlotIndex);
+	void RequestTakeAllLoot();
+	void RequestDiscard(int32 SlotIndex);
+
 	UFUNCTION(BlueprintPure, Category = "RuinMates|Weapon")
 	ABaseWeapon* GetEquippedWeapon() const { return EquippedWeapon; }
 
@@ -109,6 +122,12 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RuinMates|Weapon")
 	TObjectPtr<UWeaponInventoryComponent> WeaponInventory;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RuinMates|Backpack")
+	TObjectPtr<URuinmatesBackpackComponent> Backpack;
+
+	UPROPERTY(ReplicatedUsing = OnRep_ActiveSearch)
+	TObjectPtr<ARuinmatesLootContainer> ActiveSearch;
 
 	UPROPERTY(ReplicatedUsing = OnRep_EquippedWeapon)
 	TObjectPtr<ABaseWeapon> EquippedWeapon;
@@ -153,6 +172,29 @@ protected:
 	void EnsureCrosshair();
 	void UpdateCrosshairVisibility();
 	void BindAimInput(UInputComponent* PlayerInputComponent);
+	void BindInventoryInput(UInputComponent* PlayerInputComponent);
+	void OpenInventoryScreen();
+	void CloseInventoryScreen();
+	void EndSearch();
+	void UpdateSearchDistance();
+
+	UFUNCTION()
+	void OnRep_ActiveSearch();
+
+	UFUNCTION(Server, Reliable)
+	void Server_InteractActor(AActor* Target);
+
+	UFUNCTION(Server, Reliable)
+	void Server_StopSearch();
+
+	UFUNCTION(Server, Reliable)
+	void Server_PickupLoot(int32 SlotIndex);
+
+	UFUNCTION(Server, Reliable)
+	void Server_TakeAllLoot();
+
+	UFUNCTION(Server, Reliable)
+	void Server_DiscardBackpackSlot(int32 SlotIndex);
 
 	UFUNCTION()
 	void HandleStaminaDepleted();
@@ -191,4 +233,7 @@ protected:
 
 	UPROPERTY()
 	TObjectPtr<URuinmatesCrosshairWidget> CrosshairWidget;
+
+	UPROPERTY()
+	TObjectPtr<URuinmatesInventoryScreen> InventoryScreen;
 };

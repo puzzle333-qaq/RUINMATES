@@ -40,6 +40,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "RuinMates|Save")
 	void SetTalentIds(const TArray<FName>& InTalents);
 
+	UFUNCTION(BlueprintPure, Category = "RuinMates|Save")
+	int32 GetTeamFunds() const { return TeamFunds; }
+
+	UFUNCTION(BlueprintCallable, Category = "RuinMates|Save")
+	void AddTeamFunds(int32 Amount);
+
 	void EnsureStableMemberId();
 
 protected:
@@ -54,4 +60,7 @@ protected:
 
 	UPROPERTY(Replicated)
 	TArray<FName> TalentIds;
+
+	UPROPERTY(Replicated)
+	int32 TeamFunds = 0;
 };

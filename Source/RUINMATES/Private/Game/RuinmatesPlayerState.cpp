@@ -1,5 +1,6 @@
 #include "Game/RuinmatesPlayerState.h"
 
+#include "GameFramework/GameStateBase.h"
 #include "Net/UnrealNetwork.h"
 
 ARuinmatesPlayerState::ARuinmatesPlayerState()
@@ -23,6 +24,7 @@ void ARuinmatesPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>
 	DOREPLIFETIME(ARuinmatesPlayerState, CampaignLevel);
 	DOREPLIFETIME(ARuinmatesPlayerState, EquippedLoadoutId);
 	DOREPLIFETIME(ARuinmatesPlayerState, TalentIds);
+	DOREPLIFETIME(ARuinmatesPlayerState, TeamFunds);
 }
 
 void ARuinmatesPlayerState::EnsureStableMemberId()
@@ -65,5 +67,28 @@ void ARuinmatesPlayerState::SetTalentIds(const TArray<FName>& InTalents)
 	if (HasAuthority())
 	{
 		TalentIds = InTalents;
+	}
+}
+
+void ARuinmatesPlayerState::AddTeamFunds(int32 Amount)
+{
+	if (!HasAuthority() || Amount == 0)
+	{
+		return;
+	}
+
+	AGameStateBase* GameState = GetWorld() ? GetWorld()->GetGameState() : nullptr;
+	if (!GameState)
+	{
+		TeamFunds = FMath::Max(0, TeamFunds + Amount);
+		return;
+	}
+
+	for (APlayerState* Other : GameState->PlayerArray)
+	{
+		if (ARuinmatesPlayerState* Member = Cast<ARuinmatesPlayerState>(Other))
+		{
+			Member->TeamFunds = FMath::Max(0, Member->TeamFunds + Amount);
+		}
 	}
 }

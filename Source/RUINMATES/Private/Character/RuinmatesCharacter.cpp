@@ -1,4 +1,4 @@
-﻿#include "Character/RuinmatesCharacter.h"
+#include "Character/RuinmatesCharacter.h"
 
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -20,8 +20,12 @@
 #include "EnhancedInputSubsystems.h"
 #include "InputAction.h"
 #include "InputMappingContext.h"
+#include "Engine/OverlapResult.h"
 #include "Interface/Interactable.h"
+#include "Inventory/RuinmatesBackpackComponent.h"
+#include "Inventory/RuinmatesLootContainer.h"
 #include "UI/RuinmatesCrosshairWidget.h"
+#include "UI/RuinmatesInventoryScreen.h"
 #include "Engine/World.h"
 #include "CollisionQueryParams.h"
 
@@ -64,6 +68,7 @@ ARuinmatesCharacter::ARuinmatesCharacter()
 	WeaponPose = CreateDefaultSubobject<UWeaponPoseComponent>(TEXT("WeaponPose"));
 
 	WeaponInventory = CreateDefaultSubobject<UWeaponInventoryComponent>(TEXT("WeaponInventory"));
+	Backpack = CreateDefaultSubobject<URuinmatesBackpackComponent>(TEXT("Backpack"));
 }
 
 void ARuinmatesCharacter::BindStatsDelegates()
@@ -105,6 +110,7 @@ void ARuinmatesCharacter::Tick(float DeltaSeconds)
 	Super::Tick(DeltaSeconds);
 	UpdateAimCamera(DeltaSeconds);
 	UpdateCrosshairVisibility();
+	UpdateSearchDistance();
 }
 
 void ARuinmatesCharacter::PawnClientRestart()
@@ -117,6 +123,7 @@ void ARuinmatesCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInput
 {
 	Super::SetupPlayerInputComponent(PlayerInputComponent);
 	BindAimInput(PlayerInputComponent);
+	BindInventoryInput(PlayerInputComponent);
 }
 
 void ARuinmatesCharacter::PossessedBy(AController* NewController)
@@ -137,6 +144,7 @@ void ARuinmatesCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& 
 	DOREPLIFETIME(ARuinmatesCharacter, bWantsToSprint);
 	DOREPLIFETIME(ARuinmatesCharacter, bWantsToAim);
 	DOREPLIFETIME(ARuinmatesCharacter, EquippedWeapon);
+	DOREPLIFETIME(ARuinmatesCharacter, ActiveSearch);
 }
 
 bool ARuinmatesCharacter::CanJumpInternal_Implementation() const
@@ -631,3 +639,290 @@ void ARuinmatesCharacter::BindAimInput(UInputComponent* PlayerInputComponent)
 	AimContext->MapKey(AimAction, EKeys::RightMouseButton);
 	InputSubsystem->AddMappingContext(AimContext, 1);
 }
+
+void ARuinmatesCharacter::BindInventoryInput(UInputComponent* PlayerInputComponent)
+{
+	if (!PlayerInputComponent)
+	{
+		return;
+	}
+	PlayerInputComponent->BindKey(EKeys::Tab, IE_Pressed, this, &ARuinmatesCharacter::ToggleBackpack);
+	PlayerInputComponent->BindKey(EKeys::F, IE_Pressed, this, &ARuinmatesCharacter::TryInteract);
+	PlayerInputComponent->BindKey(EKeys::Escape, IE_Pressed, this, &ARuinmatesCharacter::CloseInventoryScreen);
+}
+
+void ARuinmatesCharacter::ToggleBackpack()
+{
+	if (IsValid(InventoryScreen) && InventoryScreen->IsInViewport())
+	{
+		if (IsValid(ActiveSearch))
+		{
+			if (HasAuthority())
+			{
+				EndSearch();
+			}
+			else
+			{
+				Server_StopSearch();
+			}
+		}
+		CloseInventoryScreen();
+		return;
+	}
+	OpenInventoryScreen();
+}
+
+void ARuinmatesCharacter::TryInteract()
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	FVector ViewLocation;
+	FRotator ViewRotation;
+	if (APlayerController* PlayerController = Cast<APlayerController>(GetController()))
+	{
+		PlayerController->GetPlayerViewPoint(ViewLocation, ViewRotation);
+	}
+	else
+	{
+		ViewLocation = GetActorLocation();
+		ViewRotation = GetActorRotation();
+	}
+
+	FHitResult Hit;
+	FCollisionQueryParams Query(SCENE_QUERY_STAT(RuinmatesInteract), false, this);
+	AActor* Target = nullptr;
+	if (World->LineTraceSingleByChannel(Hit, ViewLocation, ViewLocation + ViewRotation.Vector() * 450.f, ECC_Visibility, Query))
+	{
+		if (Hit.GetActor() && Hit.GetActor()->GetClass()->ImplementsInterface(UInteractable::StaticClass())
+			&& FVector::Dist(Hit.GetActor()->GetActorLocation(), GetActorLocation()) <= 350.f)
+		{
+			Target = Hit.GetActor();
+		}
+	}
+
+	if (!Target)
+	{
+		TArray<FOverlapResult> Overlaps;
+		FCollisionObjectQueryParams ObjectQuery;
+		ObjectQuery.AddObjectTypesToQuery(ECC_WorldDynamic);
+		ObjectQuery.AddObjectTypesToQuery(ECC_WorldStatic);
+		World->OverlapMultiByObjectType(Overlaps, GetActorLocation(), FQuat::Identity, ObjectQuery, FCollisionShape::MakeSphere(220.f), Query);
+		float Best = MAX_FLT;
+		for (const FOverlapResult& Overlap : Overlaps)
+		{
+			ARuinmatesLootContainer* Container = Cast<ARuinmatesLootContainer>(Overlap.GetActor());
+			if (!Container)
+			{
+				continue;
+			}
+			const float Distance = FVector::Dist(Container->GetActorLocation(), GetActorLocation());
+			if (Distance < Best && Distance <= Container->GetCloseDistance())
+			{
+				Best = Distance;
+				Target = Container;
+			}
+		}
+	}
+
+	if (!Target)
+	{
+		return;
+	}
+	if (HasAuthority())
+	{
+		Server_InteractActor_Implementation(Target);
+	}
+	else
+	{
+		Server_InteractActor(Target);
+	}
+}
+
+void ARuinmatesCharacter::Server_InteractActor_Implementation(AActor* Target)
+{
+	if (!IsValid(Target) || FVector::Dist(Target->GetActorLocation(), GetActorLocation()) > 400.f)
+	{
+		return;
+	}
+	if (Target->GetClass()->ImplementsInterface(UInteractable::StaticClass()))
+	{
+		IInteractable::Execute_Interact(Target, this);
+	}
+}
+
+void ARuinmatesCharacter::BeginSearch(ARuinmatesLootContainer* Container)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+	ActiveSearch = Container;
+	if (IsLocallyControlled())
+	{
+		OpenInventoryScreen();
+	}
+}
+
+void ARuinmatesCharacter::EndSearch()
+{
+	if (IsValid(ActiveSearch))
+	{
+		ActiveSearch->StopSearch(this);
+	}
+	ActiveSearch = nullptr;
+	if (IsLocallyControlled())
+	{
+		CloseInventoryScreen();
+	}
+}
+
+void ARuinmatesCharacter::Server_StopSearch_Implementation()
+{
+	EndSearch();
+}
+
+void ARuinmatesCharacter::OnRep_ActiveSearch()
+{
+	if (IsValid(ActiveSearch))
+	{
+		OpenInventoryScreen();
+	}
+	else
+	{
+		CloseInventoryScreen();
+	}
+}
+
+void ARuinmatesCharacter::UpdateSearchDistance()
+{
+	if (!IsValid(ActiveSearch))
+	{
+		return;
+	}
+	if (FVector::Dist(ActiveSearch->GetActorLocation(), GetActorLocation()) <= ActiveSearch->GetCloseDistance())
+	{
+		return;
+	}
+	if (HasAuthority())
+	{
+		EndSearch();
+	}
+	else
+	{
+		Server_StopSearch();
+		ActiveSearch = nullptr;
+		CloseInventoryScreen();
+	}
+}
+
+void ARuinmatesCharacter::OpenInventoryScreen()
+{
+	APlayerController* PlayerController = Cast<APlayerController>(GetController());
+	if (!IsLocallyControlled() || !PlayerController)
+	{
+		return;
+	}
+	if (!InventoryScreen)
+	{
+		InventoryScreen = CreateWidget<URuinmatesInventoryScreen>(PlayerController, URuinmatesInventoryScreen::StaticClass());
+	}
+	if (!InventoryScreen)
+	{
+		return;
+	}
+	if (!InventoryScreen->IsInViewport())
+	{
+		InventoryScreen->AddToViewport(30);
+	}
+	InventoryScreen->OpenFor(this, ActiveSearch);
+	FInputModeGameAndUI InputMode;
+	InputMode.SetHideCursorDuringCapture(false);
+	InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+	InputMode.SetWidgetToFocus(InventoryScreen->TakeWidget());
+	PlayerController->SetInputMode(InputMode);
+	PlayerController->SetShowMouseCursor(true);
+}
+
+void ARuinmatesCharacter::CloseInventoryScreen()
+{
+	if (InventoryScreen && InventoryScreen->IsInViewport())
+	{
+		InventoryScreen->RemoveFromParent();
+	}
+	if (APlayerController* PlayerController = Cast<APlayerController>(GetController()))
+	{
+		if (IsLocallyControlled())
+		{
+			PlayerController->SetShowMouseCursor(false);
+			PlayerController->SetInputMode(FInputModeGameOnly());
+		}
+	}
+}
+
+void ARuinmatesCharacter::RequestPickup(int32 SlotIndex)
+{
+	if (HasAuthority())
+	{
+		Server_PickupLoot_Implementation(SlotIndex);
+	}
+	else
+	{
+		Server_PickupLoot(SlotIndex);
+	}
+}
+
+void ARuinmatesCharacter::RequestTakeAllLoot()
+{
+	if (HasAuthority())
+	{
+		Server_TakeAllLoot_Implementation();
+	}
+	else
+	{
+		Server_TakeAllLoot();
+	}
+}
+
+void ARuinmatesCharacter::RequestDiscard(int32 SlotIndex)
+{
+	if (HasAuthority())
+	{
+		Server_DiscardBackpackSlot_Implementation(SlotIndex);
+	}
+	else
+	{
+		Server_DiscardBackpackSlot(SlotIndex);
+	}
+}
+
+void ARuinmatesCharacter::Server_PickupLoot_Implementation(int32 SlotIndex)
+{
+	if (!IsValid(ActiveSearch))
+	{
+		return;
+	}
+	ActiveSearch->GiveTo(this, SlotIndex);
+}
+
+void ARuinmatesCharacter::Server_TakeAllLoot_Implementation()
+{
+	if (!IsValid(ActiveSearch))
+	{
+		return;
+	}
+	ActiveSearch->GiveAllRevealed(this);
+}
+
+void ARuinmatesCharacter::Server_DiscardBackpackSlot_Implementation(int32 SlotIndex)
+{
+	if (Backpack)
+	{
+		Backpack->DiscardSlot(SlotIndex);
+	}
+}
+
+
