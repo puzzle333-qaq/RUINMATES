@@ -291,11 +291,7 @@ bool ABaseWeapon::WeaponTrace(FHitResult& OutHit, const FVector& ViewLocation, c
 		return false;
 	}
 
-	FVector Direction = ViewDirection.GetSafeNormal();
-	if (CombatParams.Spread.HipFireSpread > 0.f)
-	{
-		Direction = FMath::VRandCone(Direction, FMath::DegreesToRadians(CombatParams.Spread.HipFireSpread));
-	}
+	const FVector Direction = ViewDirection.GetSafeNormal();
 
 	const FVector CamStart = ViewLocation;
 	const FVector CamEnd = CamStart + Direction * TraceLength;

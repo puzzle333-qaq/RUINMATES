@@ -73,9 +73,9 @@ struct RUINMATES_API FWeaponSpreadParams
 {
 	GENERATED_BODY()
 
-	// Hip-fire spread in degrees (half-cone).
+	// Hip fire is aimed at the view direction. Kept at zero so old data assets do not add a random cone.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RuinMates|Spread", meta = (ClampMin = "0", ClampMax = "30"))
-	float HipFireSpread = 3.f;
+	float HipFireSpread = 0.f;
 };
 
 USTRUCT(BlueprintType)
