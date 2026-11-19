@@ -5,6 +5,7 @@
 #include "Engine/World.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
+#include "Camera/CameraComponent.h"
 #include "Net/UnrealNetwork.h"
 #include "Stats/StatsComponent.h"
 #include "Weapon/WeaponData.h"
@@ -18,6 +19,14 @@
 #include "NiagaraFunctionLibrary.h"
 #include "NiagaraSystem.h"
 #include "TimerManager.h"
+#include "DrawDebugHelpers.h"
+#include "HAL/IConsoleManager.h"
+
+#if !UE_BUILD_SHIPPING
+/** Developer-only camera (cyan) and muzzle (orange) trace overlay. */
+static TAutoConsoleVariable<int32> CVarCombatTrace(TEXT("ruinmates.DebugCombatTrace"), 0,
+	TEXT("Draw server camera and muzzle traces; 0 disables (default)."));
+#endif
 
 ABaseWeapon::ABaseWeapon()
 {
@@ -130,7 +139,13 @@ void ABaseWeapon::TryFire()
 	FVector ViewDirection;
 	if (const APawn* InstigatorPawn = GetInstigator())
 	{
-		if (const APlayerController* PC = Cast<APlayerController>(InstigatorPawn->GetController()))
+		if (const ARuinmatesCharacter* Character = Cast<ARuinmatesCharacter>(InstigatorPawn))
+		{
+			const UCameraComponent* Camera = Character->GetFollowCamera();
+			ViewLocation = IsValid(Camera) ? Camera->GetComponentLocation() : Character->GetPawnViewLocation();
+			ViewDirection = Character->GetBaseAimRotation().Vector();
+		}
+		else if (const APlayerController* PC = Cast<APlayerController>(InstigatorPawn->GetController()))
 		{
 			FRotator ViewRot;
 			PC->GetPlayerViewPoint(ViewLocation, ViewRot);
@@ -159,7 +174,8 @@ void ABaseWeapon::TryFire()
 
 void ABaseWeapon::Server_RequestFire_Implementation(FVector_NetQuantize ViewLocation, FVector_NetQuantizeNormal ViewDirection)
 {
-	FireOnServer(ViewLocation, ViewDirection);
+	// RPC carries legacy intent fields only. Rebuild both rays from server-owned pawn state.
+	TryFire();
 }
 
 bool ABaseWeapon::IsViewOriginTrusted(const FVector& ViewLocation) const
@@ -200,6 +216,10 @@ void ABaseWeapon::FireOnServer(const FVector& ViewLocation, const FVector& ViewD
 
 	++FireNotifyId;
 	PlayFireMontages();
+	if (ARuinmatesCharacter* Character = Cast<ARuinmatesCharacter>(GetInstigator()))
+	{
+		Character->PlayEquippedMontages(false, true, false);
+	}
 
 	FVector ImpactPoint = GetMuzzleLocation() + ViewDirection.GetSafeNormal() * TraceLength;
 	const int32 PelletCount = FMath::Max(1, CombatParams.Ammo.PelletsPerShot);
@@ -331,6 +351,13 @@ bool ABaseWeapon::WeaponTrace(FHitResult& OutHit, const FVector& ViewLocation, c
 	// Camera can see a target that the muzzle cannot: re-trace from the muzzle to the camera hit.
 	const FVector Muzzle = GetMuzzleLocation();
 	const FVector TargetPoint = bCamHit ? OutHit.ImpactPoint : CamEnd;
+#if !UE_BUILD_SHIPPING
+	if (CVarCombatTrace.GetValueOnGameThread() != 0)
+	{
+		DrawDebugLine(World, CamStart, TargetPoint, FColor::Cyan, false, 2.f);
+		DrawDebugLine(World, Muzzle, TargetPoint, FColor::Orange, false, 2.f);
+	}
+#endif
 	if (FVector::DistSquared(Muzzle, CamStart) > (5.f * 5.f))
 	{
 		FHitResult MuzzleHit;
@@ -397,6 +424,10 @@ void ABaseWeapon::StartReloadOnServer()
 
 	WeaponStatus = ERuinmatesWeaponStatus::Reloading;
 	PlayReloadMontages();
+	if (ARuinmatesCharacter* Character = Cast<ARuinmatesCharacter>(GetInstigator()))
+	{
+		Character->PlayEquippedMontages(false, false, true);
+	}
 
 	const float Duration = GetReloadDuration();
 	if (Duration <= 0.f)
@@ -428,6 +459,10 @@ void ABaseWeapon::FinishReloadOnServer()
 	AmmoInMag += Taken;
 	CarriedAmmo -= Taken;
 	WeaponStatus = ERuinmatesWeaponStatus::Idle;
+	if (ARuinmatesCharacter* Character = Cast<ARuinmatesCharacter>(GetInstigator()))
+	{
+		if (UWeaponPoseComponent* Pose = Character->GetWeaponPose()) Pose->SetReloading(false);
+	}
 }
 
 EReloadType ABaseWeapon::GetReloadType() const
@@ -597,7 +632,7 @@ void ABaseWeapon::SpawnFireEffectLocal(const FVector& ImpactPoint)
 			return;
 		}
 		UNiagaraComponent* Effect = nullptr;
-		if (Socket.IsNone())
+		if (Socket.IsNone() || bTracer)
 		{
 			Effect = UNiagaraFunctionLibrary::SpawnSystemAtLocation(
 				this, System, Muzzle, MuzzleRotation, FVector::OneVector, true, false, ENCPoolMethod::None, false);
@@ -609,7 +644,7 @@ void ABaseWeapon::SpawnFireEffectLocal(const FVector& ImpactPoint)
 				WeaponMesh,
 				Socket,
 				FVector::ZeroVector,
-				MuzzleRotation,
+				FRotator::ZeroRotator,
 				EAttachLocation::SnapToTarget,
 				true,
 				false,
@@ -623,7 +658,6 @@ void ABaseWeapon::SpawnFireEffectLocal(const FVector& ImpactPoint)
 		Effect->SetVariableBool(TEXT("User.Trigger"), true);
 		if (bTracer)
 		{
-			Effect->SetVariableVec3(TEXT("User.MuzzlePosition"), Muzzle);
 			Effect->SetVariablePosition(TEXT("User.MuzzlePosition"), Muzzle);
 			TArray<FVector> Impacts;
 			Impacts.Add(ImpactPoint);
