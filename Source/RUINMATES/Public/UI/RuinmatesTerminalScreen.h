@@ -50,6 +50,9 @@ public:
 	/** Server trade result forwarded by the owning character. */
 	void ShowTradeResult(bool bSuccess, const FText& Message);
 
+	/** Server answer for a consumable use, shown on the backpack page. */
+	void ShowItemUseResult(ERuinmatesItemUseResult Result);
+
 protected:
 	virtual void NativeOnInitialized() override;
 	virtual void NativeConstruct() override;
@@ -332,6 +335,7 @@ protected:
 	UPROPERTY() TObjectPtr<UTextBlock> CategoryEmptyHint;
 	UPROPERTY() TObjectPtr<URuinmatesTechButton> SortButton;
 	UPROPERTY() TObjectPtr<UButton> MenuUseButton;
+	UPROPERTY() TObjectPtr<UTextBlock> ItemActionStatus;
 	UPROPERTY() TObjectPtr<UVerticalBox> SplitPanel;
 	UPROPERTY() TObjectPtr<URuinmatesTechSlider> SplitSlider;
 	UPROPERTY() TObjectPtr<UTextBlock> SplitCountText;

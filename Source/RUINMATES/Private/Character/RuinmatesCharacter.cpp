@@ -710,12 +710,12 @@ void ARuinmatesCharacter::CloseTerminal()
 	CloseInventoryScreen();
 }
 
-void ARuinmatesCharacter::TryInteract()
+AActor* ARuinmatesCharacter::FindInteractTarget()
 {
 	UWorld* World = GetWorld();
 	if (!World)
 	{
-		return;
+		return nullptr;
 	}
 
 	FVector ViewLocation;
@@ -769,7 +769,12 @@ void ARuinmatesCharacter::TryInteract()
 			}
 		}
 	}
+	return Target;
+}
 
+void ARuinmatesCharacter::TryInteract()
+{
+	AActor* Target = FindInteractTarget();
 	if (!Target)
 	{
 		return;
@@ -783,7 +788,6 @@ void ARuinmatesCharacter::TryInteract()
 		Server_InteractActor(Target);
 	}
 }
-
 void ARuinmatesCharacter::Server_InteractActor_Implementation(AActor* Target)
 {
 	if (!IsValid(Target) || FVector::Dist(Target->GetActorLocation(), GetActorLocation()) > 400.f)
@@ -896,6 +900,10 @@ void ARuinmatesCharacter::OpenInventoryScreen(ARuinmatesMerchant* MarketMerchant
 	PlayerController->SetShowMouseCursor(true);
 }
 
+bool ARuinmatesCharacter::IsTerminalOpen() const
+{
+	return IsValid(InventoryScreen) && InventoryScreen->IsInViewport();
+}
 void ARuinmatesCharacter::CloseInventoryScreen()
 {
 	if (InventoryScreen && InventoryScreen->IsInViewport())
@@ -1064,11 +1072,20 @@ void ARuinmatesCharacter::Server_UseItem_Implementation(int32 SlotIndex, FName E
 	TryUseBackpackItem(SlotIndex, ExpectedItemId, ExpectedQuality, ExpectedSourceCount, ExpectedRevision);
 }
 
+void ARuinmatesCharacter::Client_ItemUseResult_Implementation(ERuinmatesItemUseResult Result)
+{
+	if (IsValid(InventoryScreen) && InventoryScreen->IsInViewport())
+	{
+		InventoryScreen->ShowItemUseResult(Result);
+	}
+}
+
 bool ARuinmatesCharacter::TryUseBackpackItem(int32 SlotIndex, FName ExpectedItemId,
 	ERuinmatesItemQuality ExpectedQuality, int32 ExpectedSourceCount, uint32 ExpectedRevision)
 {
 	if (!IsValid(Backpack) || !Backpack->GetSlots().IsValidIndex(SlotIndex))
 	{
+		Client_ItemUseResult(ERuinmatesItemUseResult::ItemChanged);
 		return false;
 	}
 
@@ -1078,44 +1095,45 @@ bool ARuinmatesCharacter::TryUseBackpackItem(int32 SlotIndex, FName ExpectedItem
 		|| Stack.ItemId != ExpectedItemId || Stack.Quality != ExpectedQuality
 		|| Stack.Count != ExpectedSourceCount)
 	{
+		Client_ItemUseResult(ERuinmatesItemUseResult::ItemChanged);
 		return false;
 	}
 
-	// The effect comes from the server copy of the stack (normalized from DT_Items on add/pickup);
-	// the database is only a fallback for stacks created before the fields existed.
 	ERuinmatesItemUseEffect Effect = Stack.UseEffect;
 	float UseAmount = Stack.UseAmount;
 	if (Effect == ERuinmatesItemUseEffect::None)
 	{
 		const URuinmatesItemDatabaseSubsystem* Database = URuinmatesItemDatabaseSubsystem::Get(this);
 		const FRuinmatesItemRow* Row = Database ? Database->FindItemDefinition(Stack.ItemId) : nullptr;
-		if (!Row)
+		if (Row)
 		{
-			return false;
+			Effect = Row->UseEffect;
+			UseAmount = Row->UseAmount;
 		}
-		Effect = Row->UseEffect;
-		UseAmount = Row->UseAmount;
 	}
 	if (Effect == ERuinmatesItemUseEffect::None || UseAmount <= 0.f)
 	{
+		Client_ItemUseResult(ERuinmatesItemUseResult::NotUsable);
 		return false;
 	}
 
 	UStatsComponent* Health = UStatsComponent::FindStatsComponent(this);
 	if (Health && (Health->IsDead() || !Health->CanMutateStats()))
 	{
+		Client_ItemUseResult(ERuinmatesItemUseResult::ItemChanged);
 		return false;
 	}
 
 	if (Effect == ERuinmatesItemUseEffect::Heal)
 	{
-		// A full-health target is a rejected use, not a wasted item.
 		if (!Health || Health->GetHealth() >= Health->GetMaxHealth())
 		{
+			Client_ItemUseResult(ERuinmatesItemUseResult::FullHealth);
 			return false;
 		}
 		if (!Health->ChangeHealthByAmount(UseAmount, this))
 		{
+			Client_ItemUseResult(ERuinmatesItemUseResult::ItemChanged);
 			return false;
 		}
 	}
@@ -1124,20 +1142,25 @@ bool ARuinmatesCharacter::TryUseBackpackItem(int32 SlotIndex, FName ExpectedItem
 		ABaseWeapon* Weapon = GetEquippedWeapon();
 		if (!IsValid(Weapon) || !Weapon->UsesAmmo())
 		{
+			Client_ItemUseResult(ERuinmatesItemUseResult::NoWeapon);
 			return false;
 		}
 		if (Weapon->AddCarriedAmmo(FMath::RoundToInt(UseAmount)) <= 0)
 		{
+			Client_ItemUseResult(ERuinmatesItemUseResult::NoWeapon);
 			return false;
 		}
 	}
 	else
 	{
+		Client_ItemUseResult(ERuinmatesItemUseResult::NotUsable);
 		return false;
 	}
 
 	// Consume one unit only after the effect applied; the stack itself is verified above.
-	return Backpack->RemoveItemAt(SlotIndex, 1);
+	const bool bConsumed = Backpack->RemoveItemAt(SlotIndex, 1);
+	Client_ItemUseResult(bConsumed ? ERuinmatesItemUseResult::Success : ERuinmatesItemUseResult::ItemChanged);
+	return bConsumed;
 }
 // ---------------------------------------------------------------------------
 // Trading

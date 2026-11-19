@@ -86,6 +86,12 @@ public:
 	void ToggleBackpack();
 	void CloseTerminal();
 	void TryInteract();
+
+	/** Current interaction target (trace, then nearest overlap); shared by the F key and the HUD prompt. */
+	AActor* FindInteractTarget();
+
+	/** True while the terminal/backpack widget is on screen. */
+	bool IsTerminalOpen() const;
 	void BeginSearch(ARuinmatesLootContainer* Container);
 	void RequestPickup(int32 SlotIndex);
 	void RequestTakeAllLoot();
@@ -116,6 +122,10 @@ public:
 	UFUNCTION(Server, Reliable)
 	void Server_SplitStack(int32 SourceIndex, int32 Count, FName ExpectedItemId,
 		ERuinmatesItemQuality ExpectedQuality, int32 ExpectedSourceCount, uint32 ExpectedRevision);
+
+	/** Server answer for a use request; the terminal shows the matching line. */
+	UFUNCTION(Client, Reliable)
+	void Client_ItemUseResult(ERuinmatesItemUseResult Result);
 
 	/** Server: validates the stack snapshot, applies the item effect and consumes one unit. */
 	UFUNCTION(Server, Reliable)

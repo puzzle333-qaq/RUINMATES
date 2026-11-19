@@ -2,8 +2,10 @@
 #include "Blueprint/WidgetTree.h"
 #include "Blueprint/WidgetBlueprintLibrary.h"
 #include "Character/RuinmatesCharacter.h"
+#include "Interface/Interactable.h"
 #include "Components/CanvasPanel.h"
 #include "Components/CanvasPanelSlot.h"
+#include "Components/TextBlock.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "Engine/Texture2D.h"
@@ -38,6 +40,19 @@ void URuinmatesFieldHUD::NativeOnInitialized()
 		UCanvasPanelSlot* RadioSlot = HUDDesign->AddChildToCanvas(Radio);
 		RadioSlot->SetPosition(FVector2D(24,190));
 		RadioSlot->SetSize(FVector2D(208,312));
+	}
+	// Interaction prompt: one line above the weapon bar, only visible while a target is in range.
+	InteractPrompt = WidgetTree->ConstructWidget<UTextBlock>();
+	InteractPrompt->SetFont(RuinmatesUI::FontBold(22));
+	InteractPrompt->SetColorAndOpacity(RuinmatesUI::TextPrimary());
+	InteractPrompt->SetJustification(ETextJustify::Center);
+	InteractPrompt->SetShadowOffset(FVector2D(0.f, 2.f));
+	InteractPrompt->SetShadowColorAndOpacity(FLinearColor(0.f, 0.f, 0.f, 0.7f));
+	InteractPrompt->SetVisibility(ESlateVisibility::Collapsed);
+	if (UCanvasPanelSlot* PromptSlot = HUDDesign->AddChildToCanvas(InteractPrompt))
+	{
+		PromptSlot->SetPosition(FVector2D(610, 806));
+		PromptSlot->SetSize(FVector2D(700, 36));
 	}
 	const TCHAR* Paths[] = {TEXT("Art/HUD/T_UI_Health_Track"), TEXT("Art/HUD/T_UI_Health_Fill"),
 		TEXT("Art/HUD/T_UI_Health_Critical"), TEXT("Art/HUD/T_UI_StaminaRing_Track"),
@@ -77,6 +92,8 @@ void URuinmatesFieldHUD::NativeConstruct()
 	// Existing weapons expose no ammo-change delegate. A small snapshot timer updates presentation
 	// without rebuilding widgets or polling the inventory on every frame.
 	if (GetWorld()) GetWorld()->GetTimerManager().SetTimer(WeaponRefreshTimer, this, &URuinmatesFieldHUD::RefreshWeapons, 0.1f, true);
+	// 0.15s is enough for a proximity prompt and keeps the trace/overlap cost off the frame path.
+	if (GetWorld()) GetWorld()->GetTimerManager().SetTimer(InteractPromptTimer, this, &URuinmatesFieldHUD::RefreshInteractPrompt, 0.15f, true);
 }
 
 void URuinmatesFieldHUD::HealthChanged(UStatsComponent* Stats, float, float, AActor*)
@@ -104,7 +121,7 @@ void URuinmatesFieldHUD::RefreshWeapons()
 	AmmoLabels.SetNum(4);
 	WeaponPresent.Init(false,4);
 	EquippedIndex = INDEX_NONE;
-	const ARuinmatesCharacter* Character = Cast<ARuinmatesCharacter>(GetOwningPlayerPawn());
+	ARuinmatesCharacter* Character = Cast<ARuinmatesCharacter>(GetOwningPlayerPawn());
 	const UWeaponInventoryComponent* Inventory = Character ? Character->GetWeaponInventory() : nullptr;
 	const TCHAR* DemoIcons[] = {TEXT("Derived/Icons/T_Icon_M4A1"),TEXT("Derived/Icons/T_Icon_P226"),TEXT("Derived/Icons/T_Icon_TacticalKnife")};
 	for (int32 I = 0; I < 4; ++I)
@@ -249,3 +266,35 @@ static FAutoConsoleCommand GHudPreview(TEXT("Ruinmates.PreviewHUD"),TEXT("Toggle
 			return;
 		}
 	}));
+
+void URuinmatesFieldHUD::RefreshInteractPrompt()
+{
+	if (!InteractPrompt)
+	{
+		return;
+	}
+
+	ARuinmatesCharacter* Character = Cast<ARuinmatesCharacter>(GetOwningPlayerPawn());
+	if (!Character || Character->IsTerminalOpen())
+	{
+		InteractPrompt->SetVisibility(ESlateVisibility::Collapsed);
+		return;
+	}
+
+	AActor* Target = Character->FindInteractTarget();
+	if (!IsValid(Target) || !Target->GetClass()->ImplementsInterface(UInteractable::StaticClass()))
+	{
+		InteractPrompt->SetVisibility(ESlateVisibility::Collapsed);
+		return;
+	}
+
+	const FText Prompt = IInteractable::Execute_GetInteractPrompt(Target, GetOwningPlayerPawn());
+	if (Prompt.IsEmpty())
+	{
+		InteractPrompt->SetVisibility(ESlateVisibility::Collapsed);
+		return;
+	}
+
+	InteractPrompt->SetText(Prompt);
+	InteractPrompt->SetVisibility(ESlateVisibility::HitTestInvisible);
+}

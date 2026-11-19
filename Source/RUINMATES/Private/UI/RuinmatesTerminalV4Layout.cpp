@@ -271,6 +271,7 @@ void URuinmatesTerminalScreen::BuildV4Chrome()
 	CategoryEmptyHint = Text(WidgetTree, TEXT("CategoryEmptyHint"),
 		NSLOCTEXT("RuinMatesUI", "NoItemsInCategory", "暂无该类物品"), 18);
 	CategoryEmptyHint->SetColorAndOpacity(RuinmatesUI::WithAlpha(RuinmatesUI::TextWeak(), 0.68f));
+	CategoryEmptyHint->SetJustification(ETextJustify::Center);
 	CategoryEmptyHint->SetVisibility(ESlateVisibility::Collapsed);
 	At(C, CategoryEmptyHint, 304, 554, 888, 32);
 	Scrollbar(WidgetTree, C, BackpackScroll, 1198, 344, 484);
@@ -278,6 +279,10 @@ void URuinmatesTerminalScreen::BuildV4Chrome()
 	ValueText = Text(WidgetTree, TEXT("LootValue"), FText::GetEmpty(), 24);
 	ValueText->SetJustification(ETextJustify::Right);
 	At(C, ValueText, 800, 860, 392, 36);
+	// One line for item action feedback (use result); collapsed until the server answers.
+	ItemActionStatus = Text(WidgetTree, TEXT("ItemActionStatus"), FText::GetEmpty(), 16);
+	ItemActionStatus->SetVisibility(ESlateVisibility::Collapsed);
+	At(C, ItemActionStatus, 304, 896, 560, 28);
 
 	At(C, Art(WidgetTree, TEXT("Art/Panels/T_UI_Panel_Large")), 1240, 224, 624, 696);
 	RightSwitcher = WidgetTree->ConstructWidget<UWidgetSwitcher>();
@@ -642,6 +647,11 @@ void URuinmatesTerminalScreen::RefreshMarketLive()
 
 	ApplyPageText();
 	RebuildSlots();
+	// The market page shares the backpack header, so its sort button needs the same live state.
+	if (SortButton)
+	{
+		SortButton->SetIsEnabled(Backpack && Backpack->GetUsedSlotCount() > 0);
+	}
 	if (RightSwitcher)
 	{
 		RightSwitcher->SetActiveWidgetIndex(2);

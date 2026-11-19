@@ -6,6 +6,7 @@
 class UStatsComponent;
 class URuinmatesSquadRadio;
 class UMaterialInstanceDynamic;
+class UTextBlock;
 class UCanvasPanel;
 
 /** Lightweight V4 field overlay: real local vitals, compass, squad and weapon presentation. */
@@ -31,12 +32,16 @@ private:
 	/** Reads authoritative stamina; updates the radial material with a guarded ratio. */
 	UFUNCTION() void StaminaChanged(UStatsComponent* Stats, float OldValue, float NewValue);
 	void RefreshWeapons();
+
+	/** Low-frequency interaction prompt: cheap target lookup, no per-frame scanning. */
+	void RefreshInteractPrompt();
 	TWeakObjectPtr<UStatsComponent> BoundStats;
 	UPROPERTY() TMap<FString, FSlateBrush> Brushes;
 	UPROPERTY() TObjectPtr<UMaterialInstanceDynamic> RingMaterial;
 	UPROPERTY() FSlateBrush RingBrush;
 	UPROPERTY() TObjectPtr<URuinmatesSquadRadio> Radio;
 	UPROPERTY() TObjectPtr<UCanvasPanel> HUDDesign;
+	UPROPERTY() TObjectPtr<UTextBlock> InteractPrompt;
 	UPROPERTY() TArray<FSlateBrush> WeaponIcons;
 	TArray<FString> AmmoLabels;
 	TArray<bool> WeaponPresent;
@@ -45,4 +50,5 @@ private:
 	float Stamina = 1.f;
 	bool bPreview = false;
 	FTimerHandle WeaponRefreshTimer;
+	FTimerHandle InteractPromptTimer;
 };

@@ -17,6 +17,17 @@ enum class ERuinmatesItemQuality : uint8
 	Precious UMETA(DisplayName = "珍贵")
 };
 
+// Server answer for a use request; the client only maps it to text.
+UENUM(BlueprintType)
+enum class ERuinmatesItemUseResult : uint8
+{
+	Success UMETA(DisplayName = "已使用"),
+	FullHealth UMETA(DisplayName = "生命值已满"),
+	NoWeapon UMETA(DisplayName = "未装备适用武器"),
+	NotUsable UMETA(DisplayName = "当前物品不可使用"),
+	ItemChanged UMETA(DisplayName = "物品发生变化，请重试")
+};
+
 // Server-side use effect. Amounts live in the item row, never in UI code.
 UENUM(BlueprintType)
 enum class ERuinmatesItemUseEffect : uint8
