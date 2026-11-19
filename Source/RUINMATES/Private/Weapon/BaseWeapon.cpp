@@ -215,7 +215,6 @@ void ABaseWeapon::FireOnServer(const FVector& ViewLocation, const FVector& ViewD
 	}
 
 	++FireNotifyId;
-	PlayFireMontages();
 	if (ARuinmatesCharacter* Character = Cast<ARuinmatesCharacter>(GetInstigator()))
 	{
 		Character->PlayEquippedMontages(false, true, false);
@@ -423,7 +422,6 @@ void ABaseWeapon::StartReloadOnServer()
 	}
 
 	WeaponStatus = ERuinmatesWeaponStatus::Reloading;
-	PlayReloadMontages();
 	if (ARuinmatesCharacter* Character = Cast<ARuinmatesCharacter>(GetInstigator()))
 	{
 		Character->PlayEquippedMontages(false, false, true);
@@ -493,7 +491,10 @@ void ABaseWeapon::NotifyEquipped()
 		WeaponStatus = ERuinmatesWeaponStatus::Idle;
 	}
 	++EquipNotifyId;
-	PlayEquipMontages(EquipNotifyId <= 1);
+	if (ARuinmatesCharacter* Character = Cast<ARuinmatesCharacter>(GetInstigator()))
+	{
+		Character->PlayEquippedMontages(true, false, false);
+	}
 }
 
 void ABaseWeapon::NotifyUnequipped()
@@ -514,7 +515,6 @@ void ABaseWeapon::OnRep_WeaponStatus()
 {
 	if (WeaponStatus == ERuinmatesWeaponStatus::Reloading)
 	{
-		PlayReloadMontages();
 		if (ARuinmatesCharacter* Character = Cast<ARuinmatesCharacter>(GetInstigator()))
 		{
 			Character->PlayEquippedMontages(false, false, true);
@@ -531,7 +531,6 @@ void ABaseWeapon::OnRep_WeaponStatus()
 
 void ABaseWeapon::OnRep_FireNotifyId()
 {
-	PlayFireMontages();
 	if (ARuinmatesCharacter* Character = Cast<ARuinmatesCharacter>(GetInstigator()))
 	{
 		Character->PlayEquippedMontages(false, true, false);
@@ -540,29 +539,12 @@ void ABaseWeapon::OnRep_FireNotifyId()
 
 void ABaseWeapon::OnRep_EquipNotifyId()
 {
-	PlayEquipMontages(EquipNotifyId <= 1);
-}
-
-void ABaseWeapon::PlayWeaponMontage(UAnimMontage* Montage)
-{
-	if (!Montage || !IsValid(WeaponMesh))
+	if (ARuinmatesCharacter* Character = Cast<ARuinmatesCharacter>(GetInstigator()))
 	{
-		return;
-	}
-	if (UAnimInstance* Anim = WeaponMesh->GetAnimInstance())
-	{
-		Anim->Montage_Play(Montage);
+		Character->PlayEquippedMontages(true, false, false);
 	}
 }
 
-void ABaseWeapon::PlayFireMontages()
-{
-	if (!IsValid(WeaponData))
-	{
-		return;
-	}
-	PlayWeaponMontage(WeaponData->WeaponMontages.ResolveFireMontage());
-}
 
 void ABaseWeapon::BroadcastFireEffect(const FVector& ImpactPoint)
 {
@@ -672,24 +654,6 @@ void ABaseWeapon::SpawnFireEffectLocal(const FVector& ImpactPoint)
 
 	SpawnOne(MuzzleSystem, false);
 	SpawnOne(TracerSystem, true);
-}
-
-void ABaseWeapon::PlayReloadMontages()
-{
-	if (!IsValid(WeaponData))
-	{
-		return;
-	}
-	PlayWeaponMontage(WeaponData->WeaponMontages.ResolveReloadMontage(GetReloadType()));
-}
-
-void ABaseWeapon::PlayEquipMontages(bool bFirstDraw)
-{
-	if (!IsValid(WeaponData))
-	{
-		return;
-	}
-	PlayWeaponMontage(WeaponData->WeaponMontages.ResolveEquipMontage(bFirstDraw));
 }
 
 bool ABaseWeapon::UsesAmmo() const

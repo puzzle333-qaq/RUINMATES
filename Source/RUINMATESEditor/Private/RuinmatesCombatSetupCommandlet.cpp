@@ -112,10 +112,8 @@ int32 URuinmatesCombatSetupCommandlet::Main(const FString& Params)
 			Montage->SetFlags(RF_Public | RF_Standalone);
 			Save(Montage);
 		}
-		Data->ThirdPersonMontages.EquipMontage = Montage;
-		Data->ThirdPersonMontages.FirstEquipMontage = Montage;
+		Data->ThirdPersonMontages.Equip = Montage;
 		// AO center is mesh-space additive and cannot serve as the non-additive base pose.
-		Data->ThirdPersonAnims.AimIdleAnim = Data->ThirdPersonAnims.IdleAnim;
 		Save(Data);
 		return 0;
 	}
@@ -132,7 +130,7 @@ int32 URuinmatesCombatSetupCommandlet::Main(const FString& Params)
 		}
 		if (UWeaponData* Data = LoadObject<UWeaponData>(nullptr, TEXT("/Game/RUINMATES/Blueprint/Data/DA_WeaponDATA.DA_WeaponDATA")))
 		{
-			for (UBlendSpace* Blend : { Data->ThirdPersonAnims.AimOffset_Hip.Get(), Data->ThirdPersonAnims.Strafe_Standing.Get(), Data->ThirdPersonAnims.Strafe_Crouching.Get() })
+			for (UBlendSpace* Blend : { Data->ThirdPersonAnims.AimOffset.Get() })
 			{
 				if (!Blend) continue;
 				for (int32 Axis = 0; Axis < 2; ++Axis)

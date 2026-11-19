@@ -174,15 +174,11 @@ protected:
 
 	void StartReloadOnServer();
 	void FinishReloadOnServer();
-	void PlayWeaponMontage(UAnimMontage* Montage);
-	void PlayFireMontages();
 	void BroadcastFireEffect(const FVector& ImpactPoint);
 	void SpawnFireEffectLocal(const FVector& ImpactPoint);
 
 	UFUNCTION(NetMulticast, Unreliable)
 	void Multicast_PlayFireEffect(FVector_NetQuantize ImpactPoint);
-	void PlayReloadMontages();
-	void PlayEquipMontages(bool bFirstDraw);
 	float GetReloadDuration() const;
 	EReloadType GetReloadType() const;
 
