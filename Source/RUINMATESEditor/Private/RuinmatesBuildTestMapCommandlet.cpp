@@ -18,6 +18,10 @@
 #include "GameFramework/PlayerStart.h"
 #include "GameFramework/WorldSettings.h"
 #include "Inventory/RuinmatesMerchant.h"
+#include "Inventory/RuinmatesLootContainer.h"
+#include "Kismet2/KismetEditorUtilities.h"
+#include "Engine/Blueprint.h"
+#include "Engine/BlueprintGeneratedClass.h"
 #include "UObject/UnrealType.h"
 #include "UObject/Package.h"
 
@@ -65,6 +69,20 @@ namespace
 			Actor->GetTextRender()->SetTextRenderColor(FColor(120, 226, 244));
 		}
 		return Actor;
+	}
+
+	/** Gives a spawned loot container its visible crate; the search box stays the interaction volume. */
+	void ApplyContainerVisual(AActor* Actor, UStaticMesh* Mesh)
+	{
+		if (ARuinmatesLootContainer* Container = Cast<ARuinmatesLootContainer>(Actor))
+		{
+			if (UStaticMeshComponent* Visual = Container->FindComponentByClass<UStaticMeshComponent>())
+			{
+				Visual->SetStaticMesh(Mesh);
+				Visual->SetRelativeScale3D(FVector(0.85f, 0.85f, 0.75f));
+				Visual->SetRelativeLocation(FVector(0.f, 0.f, -8.f));
+			}
+		}
 	}
 
 	AActor* SpawnBlueprint(UWorld* World, const TCHAR* ClassPath, const FVector& Location)
@@ -181,30 +199,58 @@ int32 URuinmatesBuildTestMapCommandlet::Main(const FString& Params)
 
 	// 3) Ordinary loot containers (built-in default table).
 	MarkRegion(World, TEXT("03 普通搜刮"), FVector(2400.f, 0.f, 0.f));
-	SpawnBlueprint(World, DefaultContainerPath, FVector(2400.f, -220.f, 60.f));
-	SpawnBlueprint(World, DefaultContainerPath, FVector(2400.f, 220.f, 60.f));
+	ApplyContainerVisual(SpawnBlueprint(World, DefaultContainerPath, FVector(2400.f, -220.f, 60.f)), Cube);
+	ApplyContainerVisual(SpawnBlueprint(World, DefaultContainerPath, FVector(2400.f, 220.f, 60.f)), Cube);
 
 	// 4) Multi-quality containers (weighted pool covers all five qualities).
 	MarkRegion(World, TEXT("04 多品质搜刮"), FVector(3600.f, 0.f, 0.f));
-	SpawnBlueprint(World, CommonContainerPath, FVector(3600.f, 0.f, 60.f));
+	ApplyContainerVisual(SpawnBlueprint(World, CommonContainerPath, FVector(3600.f, 0.f, 60.f)), Cube);
 
 	// 5) Adjacent containers: shared reveal and player-vs-player pickup checks.
 	MarkRegion(World, TEXT("05 相邻容器"), FVector(4800.f, 0.f, 0.f));
 	for (int32 Index = 0; Index < 3; ++Index)
 	{
-		SpawnBlueprint(World, CommonContainerPath, FVector(4800.f, (Index - 1) * 180.f, 60.f));
+	ApplyContainerVisual(SpawnBlueprint(World, CommonContainerPath, FVector(4800.f, (Index - 1) * 180.f, 60.f)), Cube);
 	}
 
-	// 6) Merchant: the C++ actor has no mesh, so give it a visible, traceable block here.
+	// 6) Merchant: a real shop blueprint (created once, reused afterwards) with a counter backdrop.
 	MarkRegion(World, TEXT("06 商人交易"), FVector(6000.f, 0.f, 0.f));
-	if (ARuinmatesMerchant* Merchant = World->SpawnActor<ARuinmatesMerchant>(FVector(6000.f, 0.f, 60.f), FRotator::ZeroRotator, SpawnParams))
+	UClass* MerchantClass = LoadClass<AActor>(nullptr, TEXT("/Game/RUINMATES/Blueprint/Inventory/BP_RuinmatesMerchant.BP_RuinmatesMerchant_C"));
+	if (!MerchantClass)
+	{
+		UPackage* MerchantPackage = CreatePackage(TEXT("/Game/RUINMATES/Blueprint/Inventory/BP_RuinmatesMerchant"));
+		UBlueprint* MerchantBlueprint = FKismetEditorUtilities::CreateBlueprint(ARuinmatesMerchant::StaticClass(), MerchantPackage,
+			TEXT("BP_RuinmatesMerchant"), BPTYPE_Normal, UBlueprint::StaticClass(), UBlueprintGeneratedClass::StaticClass());
+		if (MerchantBlueprint && MerchantBlueprint->GeneratedClass)
+		{
+			MerchantClass = MerchantBlueprint->GeneratedClass;
+			if (ARuinmatesMerchant* Defaults = Cast<ARuinmatesMerchant>(MerchantClass->GetDefaultObject()))
+			{
+				if (UStaticMeshComponent* DefaultBody = Defaults->FindComponentByClass<UStaticMeshComponent>())
+				{
+					DefaultBody->SetStaticMesh(Cube);
+					DefaultBody->SetRelativeScale3D(FVector(1.1f, 0.7f, 1.25f));
+				}
+			}
+			FKismetEditorUtilities::CompileBlueprint(MerchantBlueprint);
+			UEditorLoadingAndSavingUtils::SavePackages({MerchantPackage}, false);
+			UE_LOG(LogTemp, Display, TEXT("created BP_RuinmatesMerchant"));
+		}
+	}
+	AActor* ShopActor = MerchantClass
+		? World->SpawnActor<AActor>(MerchantClass, FVector(6000.f, 0.f, 60.f), FRotator(0.f, 180.f, 0.f), SpawnParams)
+		: World->SpawnActor<ARuinmatesMerchant>(FVector(6000.f, 0.f, 60.f), FRotator::ZeroRotator, SpawnParams);
+	if (ARuinmatesMerchant* Merchant = Cast<ARuinmatesMerchant>(ShopActor))
 	{
 		if (UStaticMeshComponent* Body = Merchant->FindComponentByClass<UStaticMeshComponent>())
 		{
 			Body->SetStaticMesh(Cube);
 			Body->SetMobility(EComponentMobility::Movable);
-			Merchant->SetActorScale3D(FVector(0.7f, 0.7f, 1.6f));
+			Merchant->SetActorScale3D(FVector(1.1f, 0.7f, 1.25f));
 		}
+		// Counter / backdrop around the merchant: visual only, the merchant Body stays the target.
+		SpawnBlock(World, Cube, FVector(6220.f, 0.f, 45.f), FVector(1.5f, 3.2f, 0.9f), FLinearColor(0.18f, 0.22f, 0.26f));
+		SpawnBlock(World, Cube, FVector(6000.f, 0.f, -20.f), FVector(1.6f, 2.4f, 0.25f), FLinearColor(0.12f, 0.15f, 0.18f));
 		// Stock only items the item table already marks as purchasable; no prices are touched.
 		Merchant->SetMerchantItems({TEXT("Bandage"), TEXT("Cans"), TEXT("AmmoBox"), TEXT("Circuit")});
 	}
@@ -212,12 +258,11 @@ int32 URuinmatesBuildTestMapCommandlet::Main(const FString& Params)
 	{
 		UE_LOG(LogTemp, Error, TEXT("Could not spawn the merchant"));
 	}
-
 	// 7) Full bag / stacking: several containers in a row so the bag can be filled quickly.
 	MarkRegion(World, TEXT("07 满载与堆叠"), FVector(7200.f, 0.f, 0.f));
 	for (int32 Index = 0; Index < 4; ++Index)
 	{
-		SpawnBlueprint(World, CommonContainerPath, FVector(7200.f, (Index - 1.5f) * 220.f, 60.f));
+	ApplyContainerVisual(SpawnBlueprint(World, CommonContainerPath, FVector(7200.f, (Index - 1.5f) * 220.f, 60.f)), Cube);
 	}
 
 	if (!UEditorLoadingAndSavingUtils::SaveMap(World, TestMapPath))
