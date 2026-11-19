@@ -6,6 +6,7 @@
 #include "Components/CanvasPanelSlot.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
+#include "Engine/Texture2D.h"
 #include "GameFramework/PlayerController.h"
 #include "HAL/IConsoleManager.h"
 #include "Materials/MaterialInstanceDynamic.h"
@@ -17,6 +18,7 @@
 #include "UI/RuinmatesUIStyle.h"
 #include "Weapon/BaseWeapon.h"
 #include "Weapon/WeaponInventoryComponent.h"
+#include "Weapon/WeaponData.h"
 
 void URuinmatesFieldHUD::NativeOnInitialized()
 {
@@ -118,8 +120,12 @@ void URuinmatesFieldHUD::RefreshWeapons()
 		}
 		else if (IsValid(Weapon))
 		{
-			// No model-specific icon is configured by the current weapon data; use a neutral glyph.
-			WeaponIcons[I] = RuinmatesUI::V4(TEXT("Icons/System/T_Icon_SYS_Ammo"));
+			// Prefer the weapon data's optional HUD portrait; an unset icon keeps the neutral glyph.
+			const UWeaponData* Data = Weapon->GetWeaponData();
+			UTexture2D* IconTexture = Data ? Data->HUDIcon.LoadSynchronous() : nullptr;
+			WeaponIcons[I] = IconTexture
+				? RuinmatesUI::ImageFor(IconTexture)
+				: RuinmatesUI::V4(TEXT("Icons/System/T_Icon_SYS_Ammo"));
 			if (Weapon->GetWeaponKind() != ERuinmatesWeaponKind::Melee)
 				AmmoLabels[I] = FString::Printf(TEXT("%d / %d"), Weapon->GetAmmoInMag(), Weapon->GetCarriedAmmo());
 			if (Character->GetEquippedWeapon() == Weapon) EquippedIndex = I;

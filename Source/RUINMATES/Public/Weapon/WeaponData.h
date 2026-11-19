@@ -9,6 +9,8 @@
 #include "NiagaraSystem.h"
 #include "GameplayTagContainer.h"
 #include "Weapon/WeaponParams.h"
+class UTexture2D;
+
 #include "WeaponData.generated.h"
 
 // Which reload montage to resolve. Presentation / mag-swap logic lives elsewhere.
@@ -192,6 +194,11 @@ public:
 	// Optional tracer from the muzzle to the impact point. Empty uses NS_WeaponFire_Tracer.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RuinMates|Weapon|Effects")
 	TObjectPtr<UNiagaraSystem> TracerEffect = nullptr;
+
+	// Optional field-HUD portrait for this weapon. Empty keeps the neutral weapon glyph; the icon is
+	// presentation-only and never used for gameplay or replication.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RuinMates|Weapon|HUD")
+	TSoftObjectPtr<UTexture2D> HUDIcon;
 
 	USkeletalMesh* GetWeaponMesh() const { return WeaponMesh.Get(); }
 };
