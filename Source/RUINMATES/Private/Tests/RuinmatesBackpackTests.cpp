@@ -4,6 +4,8 @@
 #include "Engine/World.h"
 #include "Inventory/RuinmatesBackpackComponent.h"
 #include "Inventory/RuinmatesLootContainer.h"
+#include "Inventory/RuinmatesItemDatabaseSubsystem.h"
+#include "Engine/DataTable.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -221,6 +223,47 @@ bool FRuinmatesBackpackMoveSnapshotTest::RunTest(const FString& Parameters)
 
 	World->DestroyWorld(false);
 	World->RemoveFromRoot();
+	return true;
+}
+
+// Legacy ids and names must be resolved before the capacity math compares stored stacks.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRuinmatesBackpackLegacyCapacityTest, "RuinMates.Inventory.BackpackLegacyCapacity",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FRuinmatesBackpackLegacyCapacityTest::RunTest(const FString& Parameters)
+{
+	UDataTable* Table = LoadObject<UDataTable>(nullptr, TEXT("/Game/RUINMATES/Data/Items/DT_Items.DT_Items"));
+	if (!TestNotNull(TEXT("DT_Items exists"), Table))
+	{
+		return false;
+	}
+
+	// Pre-database saves and loot templates carried a numeric id plus the localized name.
+	const FText LegacyName = FText::FromString(TEXT("绷带"));
+	const FName Resolved = URuinmatesItemDatabaseSubsystem::ResolveItemIdInTable(Table, FName(TEXT("1")), LegacyName);
+	TestEqual(TEXT("Legacy numeric id resolves through the display name"), Resolved, FName(TEXT("Bandage")));
+	TestEqual(TEXT("A known id resolves to itself"),
+		URuinmatesItemDatabaseSubsystem::ResolveItemIdInTable(Table, FName(TEXT("Cans")), FText::GetEmpty()), FName(TEXT("Cans")));
+	TestTrue(TEXT("An unknown id without a name stays unresolved"),
+		URuinmatesItemDatabaseSubsystem::ResolveItemIdInTable(Table, FName(TEXT("nope")), FText::GetEmpty()).IsNone());
+
+	// Stored slots already use the resolved id, so merging must be measured with it.
+	TArray<FRuinmatesItemStack> Slots;
+	FRuinmatesItemStack Stored;
+	Stored.ItemId = TEXT("Bandage");
+	Stored.Quality = ERuinmatesItemQuality::Common;
+	Stored.MaxStack = 10;
+	Stored.Count = 3;
+	Slots.Add(Stored);
+	Slots.SetNum(10);
+
+	const int32 EmptyRoom = 9 * 10;
+	TestEqual(TEXT("A raw legacy id misses the existing stack"),
+		URuinmatesBackpackComponent::ComputeAvailableCapacity(Slots, 10, FName(TEXT("1")), ERuinmatesItemQuality::Common, 10),
+		EmptyRoom);
+	TestEqual(TEXT("The resolved id includes the room left in the existing stack"),
+		URuinmatesBackpackComponent::ComputeAvailableCapacity(Slots, 10, Resolved, ERuinmatesItemQuality::Common, 10),
+		EmptyRoom + 7);
 	return true;
 }
 

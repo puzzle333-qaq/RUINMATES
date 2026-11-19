@@ -134,6 +134,34 @@ bool URuinmatesBackpackComponent::RemoveItemAt(int32 SlotIndex, int32 Count)
 	return true;
 }
 
+int32 URuinmatesBackpackComponent::ComputeAvailableCapacity(const TArray<FRuinmatesItemStack>& InSlots, int32 Capacity,
+	FName MatchId, ERuinmatesItemQuality Quality, int32 StackMax)
+{
+	if (MatchId.IsNone())
+	{
+		return 0;
+	}
+
+	const int32 SafeStackMax = FMath::Max(1, StackMax);
+	int32 EmptySlots = 0;
+	int32 Room = 0;
+	for (const FRuinmatesItemStack& Slot : InSlots)
+	{
+		if (!Slot.IsEmpty() && Slot.ItemId == MatchId && Slot.Quality == Quality)
+		{
+			Room += FMath::Max(0, SafeStackMax - Slot.Count);
+		}
+		else if (Slot.IsEmpty())
+		{
+			++EmptySlots;
+		}
+	}
+	// Slots are resized in BeginPlay on the server; count any not-yet-created slots as free.
+	EmptySlots += FMath::Max(0, Capacity - InSlots.Num());
+	Room += EmptySlots * SafeStackMax;
+	return Room;
+}
+
 int32 URuinmatesBackpackComponent::GetAvailableCapacityForItem(const FRuinmatesItemStack& Incoming) const
 {
 	if (Incoming.ItemId.IsNone())
@@ -143,6 +171,9 @@ int32 URuinmatesBackpackComponent::GetAvailableCapacityForItem(const FRuinmatesI
 
 	int32 StackMax = FMath::Max(1, Incoming.MaxStack);
 	ERuinmatesItemQuality Quality = Incoming.Quality;
+	// Stacks are stored with the resolved database id, so a legacy id/name must be resolved before
+	// the merge room is measured or the room in matching stacks is lost.
+	FName MatchId = Incoming.ItemId;
 	if (const URuinmatesItemDatabaseSubsystem* Database = URuinmatesItemDatabaseSubsystem::Get(this))
 	{
 		if (Database->IsLoaded())
@@ -153,27 +184,12 @@ int32 URuinmatesBackpackComponent::GetAvailableCapacityForItem(const FRuinmatesI
 			{
 				return 0;
 			}
+			MatchId = ResolvedId;
 			StackMax = FMath::Max(1, Row->MaxStack);
 			Quality = Row->Quality;
 		}
 	}
-	int32 EmptySlots = 0;
-	int32 Room = 0;
-	for (const FRuinmatesItemStack& Slot : Slots)
-	{
-		if (!Slot.IsEmpty() && Slot.ItemId == Incoming.ItemId && Slot.Quality == Quality)
-		{
-			Room += FMath::Max(0, StackMax - Slot.Count);
-		}
-		else if (Slot.IsEmpty())
-		{
-			++EmptySlots;
-		}
-	}
-	// Slots are resized in BeginPlay on the server; count any not-yet-created slots as free.
-	EmptySlots += FMath::Max(0, GetCapacity() - Slots.Num());
-	Room += EmptySlots * StackMax;
-	return Room;
+	return ComputeAvailableCapacity(Slots, GetCapacity(), MatchId, Quality, StackMax);
 }
 
 bool URuinmatesBackpackComponent::CanAddExactCount(const FRuinmatesItemStack& Incoming, int32 Count) const

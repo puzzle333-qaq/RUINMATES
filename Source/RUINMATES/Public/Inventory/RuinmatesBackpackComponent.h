@@ -45,6 +45,10 @@ public:
 	/** Server only. Free units for this stack: partial room in matching stacks plus empty slots. */
 	int32 GetAvailableCapacityForItem(const FRuinmatesItemStack& Incoming) const;
 
+	/** Pure capacity math, split out so the resolved-id matching can be unit tested. */
+	static int32 ComputeAvailableCapacity(const TArray<FRuinmatesItemStack>& InSlots, int32 Capacity,
+		FName MatchId, ERuinmatesItemQuality Quality, int32 StackMax);
+
 	/** Server only. True when the whole count would fit, used for all-or-nothing purchases. */
 	bool CanAddExactCount(const FRuinmatesItemStack& Incoming, int32 Count) const;
 

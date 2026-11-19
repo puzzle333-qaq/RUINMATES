@@ -33,6 +33,9 @@ public:
 	static const FRuinmatesItemRow* FindRowInTable(const UDataTable* Table, FName ItemId);
 	static FRuinmatesItemStack CreateStackFromRow(const FRuinmatesItemRow& Row, FName ItemId, int32 Count);
 
+	// Table-level legacy id resolution (unknown id -> matching DisplayName), used by tooling/tests.
+	static FName ResolveItemIdInTable(const UDataTable* Table, FName ItemId, const FText& LegacyDisplayName);
+
 	int32 GetItemBuyPrice(FName ItemId) const;
 	int32 GetItemSellPrice(FName ItemId) const;
 	int32 GetMaxStack(FName ItemId) const;

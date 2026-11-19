@@ -23,11 +23,6 @@
 
 namespace
 {
-	FLinearColor WithAlpha(FLinearColor Color, float Alpha)
-	{
-		Color.A = Alpha;
-		return Color;
-	}
 
 	UBorder* MakeSolid(UWidgetTree* Tree, const FName& Name, const FLinearColor& Color)
 	{
@@ -51,7 +46,7 @@ namespace
 		Style.Normal = FSlateColorBrush(Normal);
 		Style.Hovered = FSlateColorBrush(RuinmatesUI::SlotHover());
 		Style.Pressed = FSlateColorBrush(RuinmatesUI::AccentFill());
-		Style.Disabled = FSlateColorBrush(WithAlpha(Normal, 0.4f));
+		Style.Disabled = FSlateColorBrush(RuinmatesUI::WithAlpha(Normal, 0.4f));
 		Style.NormalPadding = FMargin(12.f, 8.f);
 		Style.PressedPadding = FMargin(12.f, 8.f);
 		Button->SetStyle(Style);
@@ -140,7 +135,7 @@ void URuinmatesTradeScreen::BuildLayout()
 		FundsSlot->SetVerticalAlignment(VAlign_Center);
 	}
 	UTextBlock* CloseLabel = nullptr;
-	UButton* CloseButton = MakeButton(WidgetTree, TEXT("TradeClose"), WithAlpha(RuinmatesUI::Danger(), 0.35f), &CloseLabel);
+	UButton* CloseButton = MakeButton(WidgetTree, TEXT("TradeClose"), RuinmatesUI::WithAlpha(RuinmatesUI::Danger(), 0.35f), &CloseLabel);
 	CloseLabel->SetText(NSLOCTEXT("RuinMatesUI", "Close", "×"));
 	CloseButton->OnClicked.AddDynamic(this, &URuinmatesTradeScreen::HandleClose);
 	if (UHorizontalBoxSlot* CloseSlot = Header->AddChildToHorizontalBox(CloseButton))

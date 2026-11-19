@@ -83,20 +83,24 @@ const FRuinmatesItemRow* URuinmatesItemDatabaseSubsystem::FindItemDefinition(FNa
 	return FindRowInTable(LoadedTable, ItemId);
 }
 
-FName URuinmatesItemDatabaseSubsystem::ResolveItemId(FName ItemId, const FText& LegacyDisplayName) const
+FName URuinmatesItemDatabaseSubsystem::ResolveItemIdInTable(const UDataTable* Table, FName ItemId, const FText& LegacyDisplayName)
 {
-	if (FindItemDefinition(ItemId))
+	if (!IsValid(Table) || Table->GetRowStruct() != FRuinmatesItemRow::StaticStruct())
+	{
+		return NAME_None;
+	}
+	if (FindRowInTable(Table, ItemId))
 	{
 		return ItemId;
 	}
-	if (!IsValid(LoadedTable) || LegacyDisplayName.IsEmpty())
+	if (LegacyDisplayName.IsEmpty())
 	{
 		return NAME_None;
 	}
 
 	FName ResolvedId = NAME_None;
 	const FString WantedName = LegacyDisplayName.ToString();
-	LoadedTable->ForeachRow<FRuinmatesItemRow>(TEXT("RuinMatesLegacyItemId"),
+	Table->ForeachRow<FRuinmatesItemRow>(TEXT("RuinMatesLegacyItemId"),
 		[&ResolvedId, &WantedName](const FName& RowName, const FRuinmatesItemRow& Row)
 		{
 			if (ResolvedId.IsNone() && Row.DisplayName.ToString() == WantedName)
@@ -105,6 +109,15 @@ FName URuinmatesItemDatabaseSubsystem::ResolveItemId(FName ItemId, const FText& 
 			}
 		});
 	return ResolvedId;
+}
+
+FName URuinmatesItemDatabaseSubsystem::ResolveItemId(FName ItemId, const FText& LegacyDisplayName) const
+{
+	if (!IsValid(LoadedTable))
+	{
+		const_cast<URuinmatesItemDatabaseSubsystem*>(this)->EnsureLoaded();
+	}
+	return ResolveItemIdInTable(LoadedTable, ItemId, LegacyDisplayName);
 }
 
 bool URuinmatesItemDatabaseSubsystem::NormalizeStack(FRuinmatesItemStack& Stack, bool bPreserveCount) const

@@ -1177,12 +1177,6 @@ void URuinmatesTerminalScreen::RebuildSlots()
 {
 	TArray<FRuinmatesTerminalSlotView> Shown = RuinmatesTerminalDisplay::FilterBackpackSlots(Page.Backpack, ActiveFilter);
 	SyncGrid(BackpackGrid, BackpackSlots, Shown, BackpackColumns, false);
-	for (URuinmatesTerminalItemSlot* Cell : BackpackSlots)
-	{
-		if (Cell)
-		{
-		}
-	}
 	if (CategoryEmptyHint)
 	{
 		CategoryEmptyHint->SetVisibility(!ActiveFilter.IsNone() && Shown.IsEmpty()
