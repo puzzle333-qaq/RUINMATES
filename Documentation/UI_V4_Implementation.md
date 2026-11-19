@@ -123,8 +123,9 @@ Capture play settings are restored without saving altered editor defaults.
   in labelled previews. There are at most three other teammates, not four.
 - The fourth HUD weapon position is a reserved empty position when the existing
   inventory has no corresponding weapon. No new weapon category was created.
-- The new market and storage views await actual backend integration. Their
-  confirmation/transfer controls explicitly remain disabled.
+- The market view is now bound to the real trade backend (`Documentation/Phase1C_Market.md`);
+  the isolated `Ruinmates.PreviewMarket` console command still shows sample goods with no
+  transactions. The storage view remains a visual preview with transfer controls disabled.
 - Native Slate places/clamps tooltips; a bespoke 180ms per-cell tooltip scheduler,
   closing fade, drag/drop and Alt-based mouse weapon switching are not implemented.
 - Host/client manual multiplayer verification and controller-only navigation
