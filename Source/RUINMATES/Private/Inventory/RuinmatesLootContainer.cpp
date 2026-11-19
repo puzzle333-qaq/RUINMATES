@@ -63,6 +63,14 @@ ARuinmatesLootContainer::ARuinmatesLootContainer()
 	SearchBounds->SetCollisionResponseToAllChannels(ECR_Ignore);
 	SearchBounds->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 
+	VisualMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("VisualMesh"));
+	VisualMesh->SetupAttachment(SearchBounds);
+	VisualMesh->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	VisualMesh->SetCollisionResponseToAllChannels(ECR_Ignore);
+	VisualMesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+	VisualMesh->SetCanEverAffectNavigation(false);
+	VisualMesh->SetGenerateOverlapEvents(false);
+
 	Label = CreateDefaultSubobject<UTextRenderComponent>(TEXT("Label"));
 	Label->SetupAttachment(SearchBounds);
 	Label->SetRelativeLocation(FVector(0.f, 0.f, 70.f));

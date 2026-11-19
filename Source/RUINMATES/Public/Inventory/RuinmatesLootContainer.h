@@ -55,6 +55,13 @@ protected:
 	UPROPERTY(VisibleAnywhere, Category = "RuinMates|Loot")
 	TObjectPtr<UTextRenderComponent> Label;
 
+	/**
+	 * Optional visual crate. Editable per blueprint instance; the search box stays the interaction
+	 * authority, so the mesh never widens the trace range.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RuinMates|Loot")
+	TObjectPtr<UStaticMeshComponent> VisualMesh;
+
 	UPROPERTY(EditAnywhere, Category = "RuinMates|Loot")
 	FText ContainerName;
 
