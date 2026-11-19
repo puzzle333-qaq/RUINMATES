@@ -271,24 +271,9 @@ namespace
 			const FRuinmatesItemRow* Row = Database->FindItemDefinition(ResolvedId);
 			if (Row)
 			{
+				// The data table is authoritative for artwork: DT_Items binds the per-item icons.
+				// A missing/empty icon keeps the neutral placeholder fallback in the item cell.
 				View.Icon = Row->Icon.ToSoftObjectPath();
-				if (View.Icon.ToString().Contains(TEXT("/UI/Textures/Items/")))
-				{
-					// The previous procedural icons have no matching V4 art for most loot.
-					// Keep those items identifiable by name and an explicit neutral placeholder.
-					if (Stack.ItemId == TEXT("Bandage"))
-					{
-						View.Icon = FSoftObjectPath(TEXT("/Game/RUINMATES/UI/AssetPackV4/Derived/Icons/T_Icon_Bandage.T_Icon_Bandage"));
-					}
-					else if (Stack.ItemId == TEXT("AmmoBox"))
-					{
-						View.Icon = FSoftObjectPath(TEXT("/Game/RUINMATES/UI/AssetPackV4/Derived/Icons/T_Icon_AmmoCase.T_Icon_AmmoCase"));
-					}
-					else
-					{
-						View.Icon.Reset();
-					}
-				}
 				View.Category = TabCategory(Row->Category);
 				if (View.Description.IsEmpty())
 				{
