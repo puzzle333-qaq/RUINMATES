@@ -11,6 +11,7 @@ public class RUINMATES : ModuleRules
 			"Core",
 			"CoreUObject",
 			"Engine",
+            "AnimGraphRuntime",
 			"GameplayTags",
 			"EnhancedInput",
 			"InputCore",
@@ -28,3 +29,4 @@ public class RUINMATES : ModuleRules
 		});
 	}
 }
+

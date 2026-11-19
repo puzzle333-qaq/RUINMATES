@@ -18,6 +18,7 @@ public class RUINMATESEditor : ModuleRules
 		PrivateDependencyModuleNames.AddRange(new string[]
 		{
 			"AnimGraph",
+			"Niagara",
 			"AnimGraphRuntime",
 			"BlueprintGraph",
 			"Slate",
