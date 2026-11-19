@@ -156,6 +156,8 @@ FRuinmatesItemStack URuinmatesItemDatabaseSubsystem::CreateStackFromRow(const FR
 	Stack.MaxStack = FMath::Max(1, Row.MaxStack);
 	Stack.UnitValue = FMath::Max(0, Row.SellPrice);
 	Stack.bUpgradeMaterial = Row.bUpgradeMaterial;
+	Stack.UseEffect = Row.UseEffect;
+	Stack.UseAmount = FMath::Max(0.f, Row.UseAmount);
 	Stack.Count = FMath::Clamp(Count, 0, Stack.MaxStack);
 	return Stack;
 }

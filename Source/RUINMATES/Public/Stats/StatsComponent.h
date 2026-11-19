@@ -57,6 +57,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "RuinMates|Health")
 	float GetHealthNormalized() const;
 
+	/** Read-only accessors used by consumables; healing still goes through ChangeHealthByAmount. */
+	UFUNCTION(BlueprintPure, Category = "RuinMates|Health")
+	float GetHealth() const { return Health; }
+	UFUNCTION(BlueprintPure, Category = "RuinMates|Health")
+	float GetMaxHealth() const { return MaxHealth; }
+	UFUNCTION(BlueprintPure, Category = "RuinMates|Health")
+	bool IsDead() const { return DeathState != EDeathState::NotDead; }
+
 	// Applies a signed health delta. Starts death when health reaches 0. Returns whether the owner is still alive.
 	bool ChangeHealthByAmount(float Amount, AActor* Instigator);
 	void ChangeMaxHealthByAmount(float Amount, AActor* Instigator);

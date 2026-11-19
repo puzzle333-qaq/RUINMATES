@@ -17,6 +17,15 @@ enum class ERuinmatesItemQuality : uint8
 	Precious UMETA(DisplayName = "珍贵")
 };
 
+// Server-side use effect. Amounts live in the item row, never in UI code.
+UENUM(BlueprintType)
+enum class ERuinmatesItemUseEffect : uint8
+{
+	None UMETA(DisplayName = "不可使用"),
+	Heal UMETA(DisplayName = "恢复生命"),
+	Ammo UMETA(DisplayName = "补充备用弹药")
+};
+
 // Static inventory category. Used by the item database, filters and merchant lists.
 UENUM(BlueprintType)
 enum class ERuinmatesItemCategory : uint8
@@ -70,6 +79,14 @@ struct RUINMATES_API FRuinmatesItemRow : public FTableRowBase
 	// Upgrade parts are not only vendor trash. The base-upgrade use comes later.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RuinMates|Item")
 	bool bUpgradeMaterial = false;
+
+	// Optional use effect. Items with None keep their old behaviour (no use action).
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RuinMates|Item")
+	ERuinmatesItemUseEffect UseEffect = ERuinmatesItemUseEffect::None;
+
+	// Heal amount (health points) or ammo amount; only read for the matching UseEffect.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RuinMates|Item", meta = (ClampMin = "0"))
+	float UseAmount = 0.f;
 };
 
 // Permanent backpack growth. Slot counts are a starting pass, not a final economy.
@@ -112,6 +129,13 @@ struct RUINMATES_API FRuinmatesItemStack
 	// Upgrade parts are not only vendor trash. The base-upgrade use comes later.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "RuinMates|Item")
 	bool bUpgradeMaterial = false;
+
+	// Copied from the row so the terminal can enable/disable the use action without a lookup.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "RuinMates|Item")
+	ERuinmatesItemUseEffect UseEffect = ERuinmatesItemUseEffect::None;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "RuinMates|Item")
+	float UseAmount = 0.f;
 
 	// Containers hide this until the shared search timer reveals it.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "RuinMates|Item")

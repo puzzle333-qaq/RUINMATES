@@ -650,3 +650,20 @@ void ABaseWeapon::PlayEquipMontages(bool bFirstDraw)
 	}
 	PlayWeaponMontage(WeaponData->WeaponMontages.ResolveEquipMontage(bFirstDraw));
 }
+
+bool ABaseWeapon::UsesAmmo() const
+{
+	return IsValid(WeaponData) && WeaponData->CombatParams.Ammo.UsesAmmo();
+}
+
+int32 ABaseWeapon::AddCarriedAmmo(int32 Amount)
+{
+	if (Amount <= 0 || !HasAuthority() || !UsesAmmo())
+	{
+		return 0;
+	}
+	const int64 NewTotal = FMath::Min<int64>(static_cast<int64>(CarriedAmmo) + static_cast<int64>(Amount), MAX_int32);
+	const int32 Added = static_cast<int32>(NewTotal) - CarriedAmmo;
+	CarriedAmmo = static_cast<int32>(NewTotal);
+	return Added;
+}

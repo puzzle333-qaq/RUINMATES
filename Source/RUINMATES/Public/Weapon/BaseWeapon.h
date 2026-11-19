@@ -64,6 +64,14 @@ public:
 	UFUNCTION(BlueprintPure, Category = "RuinMates|Weapon")
 	int32 GetCarriedAmmo() const { return CarriedAmmo; }
 
+	/** True when this weapon consumes reserve ammo at all (melee weapons do not). */
+	UFUNCTION(BlueprintPure, Category = "RuinMates|Weapon")
+	bool UsesAmmo() const;
+
+	/** Server only: adds reserve ammo. Returns the amount actually added (0 when nothing fits). */
+	UFUNCTION(BlueprintCallable, Category = "RuinMates|Weapon")
+	int32 AddCarriedAmmo(int32 Amount);
+
 	UFUNCTION(BlueprintPure, Category = "RuinMates|Weapon")
 	ERuinmatesWeaponStatus GetWeaponStatus() const { return WeaponStatus; }
 

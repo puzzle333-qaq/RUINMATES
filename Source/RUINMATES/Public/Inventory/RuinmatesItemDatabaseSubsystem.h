@@ -50,6 +50,9 @@ public:
 	TArray<FName> GetAllItemIds() const;
 
 	bool IsLoaded() const { return IsValid(LoadedTable); }
+
+	/** Raw table pointer for the pure sort helper; null before the first load. */
+	const UDataTable* GetItemTable() const { return LoadedTable; }
 	UDataTable* GetTable() const { return LoadedTable; }
 
 	// Test / tools hook: use a specific table instead of the configured asset.
