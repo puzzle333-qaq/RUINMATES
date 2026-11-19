@@ -268,17 +268,6 @@ void URuinmatesTerminalItemSlot::ApplyView(const FRuinmatesTerminalSlotView& InV
 	RefreshVisual();
 }
 
-void URuinmatesTerminalItemSlot::SetBackpackDragEnabled(bool bEnabled)
-{
-	bBackpackDragEnabled = bEnabled;
-}
-
-void URuinmatesTerminalItemSlot::SetDragging(bool bDragging)
-{
-	bIsDragging = bDragging;
-	RefreshVisual();
-}
-
 void URuinmatesTerminalItemSlot::ApplyPlateStyle()
 {
 	if (!HitButton)
@@ -333,7 +322,7 @@ void URuinmatesTerminalItemSlot::RefreshVisual()
 
 	ApplyPlateStyle();
 	// Pending (request in flight), taken and filtered cells cannot be clicked again.
-	HitButton->SetIsEnabled(!(State == ERuinmatesTerminalSlotState::Pending || bTaken || View.bDimmed || bIsDragging));
+	HitButton->SetIsEnabled(!(State == ERuinmatesTerminalSlotState::Pending || bTaken || View.bDimmed));
 
 	// Quality: low-alpha gradient that peaks in a thin bottom line, plus a tinted frame.
 	Show(QualityGlow, false);
@@ -421,21 +410,11 @@ void URuinmatesTerminalItemSlot::RefreshVisual()
 	Show(ScanBar ? ScanBar->GetParent() : nullptr, bSearching);
 	Show(ScanBar, bSearching);
 
-	Show(Selection, bKnown && (View.bSelected || bHovered || View.bDropTarget) && !View.bDimmed);
-	if (View.bDropTarget)
-	{
-		Selection->SetBrush(RuinmatesUI::V4(View.bDropAllowed
-			? TEXT("Derived/Slots/T_UI_SlotOverlay_DropValid")
-			: TEXT("Derived/Slots/T_UI_SlotOverlay_DropInvalid")));
-		Selection->SetRenderOpacity(1.f);
-	}
-	else
-	{
-		Selection->SetBrush(RuinmatesUI::V4(View.bSelected
-			? TEXT("Derived/Slots/T_UI_SlotOverlay_Selected")
-			: TEXT("Derived/Slots/T_UI_SlotOverlay_Hover")));
-		Selection->SetRenderOpacity(View.bSelected ? 1.f : 0.45f);
-	}
+	Show(Selection, bKnown && (View.bSelected || bHovered) && !View.bDimmed);
+	Selection->SetBrush(RuinmatesUI::V4(View.bSelected
+		? TEXT("Derived/Slots/T_UI_SlotOverlay_Selected")
+		: TEXT("Derived/Slots/T_UI_SlotOverlay_Hover")));
+	Selection->SetRenderOpacity(View.bSelected ? 1.f : 0.45f);
 	Show(FinishPips, bKnown && !View.bDimmed);
 	if (bKnown)
 	{
@@ -445,7 +424,7 @@ void URuinmatesTerminalItemSlot::RefreshVisual()
 	}
 
 	// Tooltip with the details that do not fit on the cell. Hidden items never leak content.
-	if (bKnown && !View.bDimmed && !bIsDragging)
+	if (bKnown && !View.bDimmed)
 	{
 		FText Tip = FText::Format(NSLOCTEXT("RuinMatesUI", "SlotTooltip", "{0}\n品质：{1}    数量：{2}"),
 			View.Name, QualityLine(View), FText::AsNumber(View.Count));
@@ -508,11 +487,6 @@ void URuinmatesTerminalItemSlot::NativeTick(const FGeometry& MyGeometry, float I
 
 FReply URuinmatesTerminalItemSlot::NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
 {
-	if (bBackpackDragEnabled && View.State == ERuinmatesTerminalSlotState::Revealed
-		&& !View.bDimmed && InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
-	{
-		return FReply::Handled().DetectDrag(TakeWidget(), EKeys::LeftMouseButton);
-	}
 	// The button only consumes the left button, so right clicks bubble up to here.
 	if (InMouseEvent.GetEffectingButton() == EKeys::RightMouseButton
 		&& View.State == ERuinmatesTerminalSlotState::Revealed && !View.bDimmed)
@@ -521,108 +495,6 @@ FReply URuinmatesTerminalItemSlot::NativeOnMouseButtonDown(const FGeometry& InGe
 		return FReply::Handled();
 	}
 	return Super::NativeOnMouseButtonDown(InGeometry, InMouseEvent);
-}
-
-void URuinmatesTerminalItemSlot::NativeOnDragDetected(const FGeometry& InGeometry,
-	const FPointerEvent& InMouseEvent, UDragDropOperation*& OutOperation)
-{
-	Super::NativeOnDragDetected(InGeometry, InMouseEvent, OutOperation);
-	ARuinmatesCharacter* Character = Cast<ARuinmatesCharacter>(GetOwningPlayerPawn());
-	URuinmatesBackpackComponent* Backpack = Character ? Character->GetBackpack() : nullptr;
-	if (!bBackpackDragEnabled || !IsValid(Backpack) || !Backpack->GetSlots().IsValidIndex(View.StableIndex))
-	{
-		return;
-	}
-
-	const FRuinmatesItemStack& Stack = Backpack->GetSlots()[View.StableIndex];
-	if (Stack.IsEmpty())
-	{
-		return;
-	}
-
-	URuinmatesBackpackDragOperation* Operation = NewObject<URuinmatesBackpackDragOperation>();
-	Operation->SourceSlot = this;
-	Operation->SourceIndex = View.StableIndex;
-	Operation->SourceItemId = Stack.ItemId;
-	Operation->SourceQuality = Stack.Quality;
-	Operation->SourceCount = Stack.Count;
-	Operation->ExpectedRevision = Backpack->GetRevision();
-	OutOperation = Operation;
-	SetDragging(true);
-}
-
-void URuinmatesTerminalItemSlot::NativeOnDragCancelled(const FDragDropEvent& InDragDropEvent,
-	UDragDropOperation* InOperation)
-{
-	if (URuinmatesBackpackDragOperation* Operation = Cast<URuinmatesBackpackDragOperation>(InOperation))
-	{
-		if (IsValid(Operation->SourceSlot))
-		{
-			Operation->SourceSlot->SetDragging(false);
-		}
-	}
-	Super::NativeOnDragCancelled(InDragDropEvent, InOperation);
-}
-
-void URuinmatesTerminalItemSlot::NativeOnDragEnter(const FGeometry& InGeometry,
-	const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation)
-{
-	Super::NativeOnDragEnter(InGeometry, InDragDropEvent, InOperation);
-	URuinmatesBackpackDragOperation* Operation = Cast<URuinmatesBackpackDragOperation>(InOperation);
-	ARuinmatesCharacter* Character = Cast<ARuinmatesCharacter>(GetOwningPlayerPawn());
-	URuinmatesBackpackComponent* Backpack = Character ? Character->GetBackpack() : nullptr;
-	if (!Operation || !IsValid(Backpack) || !bBackpackDragEnabled || !Backpack->GetSlots().IsValidIndex(View.StableIndex))
-	{
-		return;
-	}
-
-	const FRuinmatesItemStack& Target = Backpack->GetSlots()[View.StableIndex];
-	View.bDropTarget = true;
-	View.bDropAllowed = Backpack->CanMoveSlotSnapshot(Operation->SourceIndex, View.StableIndex,
-		Operation->SourceItemId, Operation->SourceQuality, Operation->SourceCount,
-		Target.IsEmpty() ? NAME_None : Target.ItemId, Target.Quality, Target.IsEmpty() ? 0 : Target.Count,
-		Operation->ExpectedRevision);
-	RefreshVisual();
-}
-
-void URuinmatesTerminalItemSlot::NativeOnDragLeave(const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation)
-{
-	View.bDropTarget = false;
-	View.bDropAllowed = false;
-	RefreshVisual();
-	Super::NativeOnDragLeave(InDragDropEvent, InOperation);
-}
-
-bool URuinmatesTerminalItemSlot::NativeOnDrop(const FGeometry& InGeometry,
-	const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation)
-{
-	URuinmatesBackpackDragOperation* Operation = Cast<URuinmatesBackpackDragOperation>(InOperation);
-	ARuinmatesCharacter* Character = Cast<ARuinmatesCharacter>(GetOwningPlayerPawn());
-	URuinmatesBackpackComponent* Backpack = Character ? Character->GetBackpack() : nullptr;
-	if (!Operation || !IsValid(Backpack) || !bBackpackDragEnabled || !Backpack->GetSlots().IsValidIndex(View.StableIndex))
-	{
-		return Super::NativeOnDrop(InGeometry, InDragDropEvent, InOperation);
-	}
-
-	const FRuinmatesItemStack& Target = Backpack->GetSlots()[View.StableIndex];
-	if (Backpack->CanMoveSlotSnapshot(Operation->SourceIndex, View.StableIndex,
-		Operation->SourceItemId, Operation->SourceQuality, Operation->SourceCount,
-		Target.IsEmpty() ? NAME_None : Target.ItemId, Target.Quality, Target.IsEmpty() ? 0 : Target.Count,
-		Operation->ExpectedRevision))
-	{
-		Character->RequestMoveBackpackSlot(Operation->SourceIndex, View.StableIndex,
-			Operation->SourceItemId, Operation->SourceQuality, Operation->SourceCount,
-			Target.IsEmpty() ? NAME_None : Target.ItemId, Target.Quality, Target.IsEmpty() ? 0 : Target.Count,
-			Operation->ExpectedRevision);
-	}
-	if (IsValid(Operation->SourceSlot))
-	{
-		Operation->SourceSlot->SetDragging(false);
-	}
-	View.bDropTarget = false;
-	View.bDropAllowed = false;
-	RefreshVisual();
-	return true;
 }
 
 void URuinmatesTerminalItemSlot::HandleClicked()

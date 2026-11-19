@@ -1195,8 +1195,7 @@ void URuinmatesTerminalScreen::SyncGrid(UUniformGridPanel* Grid, TArray<TObjectP
 			Cell->ApplyView(Views[Index]);
 			if (!bLoot)
 			{
-				Cell->SetBackpackDragEnabled(bLive && ActiveFilter.IsNone());
-			}
+						}
 		}
 	}
 	if (bGrew)
@@ -1327,6 +1326,22 @@ void URuinmatesTerminalScreen::HandleMenuSplit()
 	}
 
 	SplitPanel->SetVisibility(ESlateVisibility::Visible);
+	// The panel makes the menu taller than the collapsed layout: re-clamp it to the viewport now.
+	if (APlayerController* Player = GetOwningPlayer())
+	{
+		float MouseX = 0.f;
+		float MouseY = 0.f;
+		if (UWidgetLayoutLibrary::GetMousePositionScaledByDPI(Player, MouseX, MouseY))
+		{
+			const FVector2D ViewSize = UWidgetLayoutLibrary::GetViewportSize(this);
+			if (UCanvasPanelSlot* MenuSlot = Cast<UCanvasPanelSlot>(ContextMenu->Slot))
+			{
+				MenuSlot->SetPosition(FVector2D(
+					FMath::Clamp(MouseX, 8.f, FMath::Max(8.f, ViewSize.X - 300.f)),
+					FMath::Clamp(MouseY, 8.f, FMath::Max(8.f, ViewSize.Y - 380.f))));
+			}
+		}
+	}
 	if (Match->Count <= 1)
 	{
 		SplitMaxCount = 0;
@@ -2019,3 +2034,41 @@ static FAutoConsoleCommand GUITestClose(
 		}
 	}));
 #endif
+
+void URuinmatesTerminalScreen::ShowItemUseResult(ERuinmatesItemUseResult Result)
+{
+	if (!ItemActionStatus)
+	{
+		return;
+	}
+
+	FText Message;
+	FLinearColor Color = RuinmatesUI::TextWeak();
+	switch (Result)
+	{
+	case ERuinmatesItemUseResult::Success:
+		Message = NSLOCTEXT("RuinMatesUI", "UseSuccess", "已使用");
+		Color = RuinmatesUI::Success();
+		break;
+	case ERuinmatesItemUseResult::FullHealth:
+		Message = NSLOCTEXT("RuinMatesUI", "UseFullHealth", "生命值已满");
+		Color = RuinmatesUI::Error();
+		break;
+	case ERuinmatesItemUseResult::NoWeapon:
+		Message = NSLOCTEXT("RuinMatesUI", "UseNoWeapon", "未装备适用武器");
+		Color = RuinmatesUI::Error();
+		break;
+	case ERuinmatesItemUseResult::NotUsable:
+		Message = NSLOCTEXT("RuinMatesUI", "UseNotUsable", "当前物品不可使用");
+		Color = RuinmatesUI::Error();
+		break;
+	default:
+		Message = NSLOCTEXT("RuinMatesUI", "UseItemChanged", "物品发生变化，请重试");
+		Color = RuinmatesUI::Error();
+		break;
+	}
+
+	ItemActionStatus->SetText(Message);
+	ItemActionStatus->SetColorAndOpacity(FSlateColor(Color));
+	ItemActionStatus->SetVisibility(ESlateVisibility::HitTestInvisible);
+}
