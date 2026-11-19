@@ -12,9 +12,13 @@
 #include "Engine/World.h"
 #include "FileHelpers.h"
 #include "Game/RuinmatesGameMode.h"
+#include "GameFramework/Character.h"
+#include "GameFramework/GameModeBase.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "GameFramework/PlayerStart.h"
 #include "GameFramework/WorldSettings.h"
 #include "Inventory/RuinmatesMerchant.h"
+#include "UObject/UnrealType.h"
 #include "UObject/Package.h"
 
 namespace
@@ -102,10 +106,32 @@ int32 URuinmatesBuildTestMapCommandlet::Main(const FString& Params)
 
 	UStaticMesh* Cube = LoadCube();
 
-	// The map must run the project game mode so player state, funds and the merchant work.
+	// The map must run the project's configured game mode and character blueprint: the C++ classes
+	// alone spawn a meshless pawn with no input assets, which cannot be used for a functional test.
+	UClass* GameModeClass = LoadClass<AGameModeBase>(nullptr, TEXT("/Game/ThirdPerson/Blueprints/BP_ThirdPersonGameMode.BP_ThirdPersonGameMode_C"));
+	AGameModeBase* GameModeDefaults = GameModeClass ? Cast<AGameModeBase>(GameModeClass->GetDefaultObject()) : nullptr;
+	UClass* PawnClass = GameModeDefaults ? GameModeDefaults->DefaultPawnClass : nullptr;
+	const bool bGameModeCompatible = GameModeClass && GameModeClass->IsChildOf(ARuinmatesGameMode::StaticClass());
+	const bool bPawnCompatible = PawnClass && PawnClass->IsChildOf(ACharacter::StaticClass());
+	ACharacter* PawnDefaults = bPawnCompatible ? Cast<ACharacter>(PawnClass->GetDefaultObject()) : nullptr;
+	const bool bPawnHasMesh = PawnDefaults && PawnDefaults->GetMesh() && PawnDefaults->GetMesh()->GetSkeletalMeshAsset();
+	UE_LOG(LogTemp, Display, TEXT("candidate game mode=%s parent=%s pawn=%s pawnMesh=%s"),
+		GameModeClass ? *GameModeClass->GetName() : TEXT("<missing>"),
+		GameModeDefaults ? *GameModeDefaults->GetClass()->GetSuperClass()->GetName() : TEXT("<missing>"),
+		PawnClass ? *PawnClass->GetName() : TEXT("<missing>"),
+		bPawnHasMesh ? TEXT("yes") : TEXT("no"));
+
 	if (AWorldSettings* Settings = World->GetWorldSettings())
 	{
-		Settings->DefaultGameMode = ARuinmatesGameMode::StaticClass();
+		if (bGameModeCompatible && bPawnCompatible && bPawnHasMesh)
+		{
+			Settings->DefaultGameMode = GameModeClass;
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("BP_ThirdPersonGameMode is not a compatible ARuinmatesGameMode with a meshed character; falling back to ARuinmatesGameMode"));
+			Settings->DefaultGameMode = ARuinmatesGameMode::StaticClass();
+		}
 	}
 
 	// Lighting: movable, so PIE does not need a lighting build.
@@ -176,6 +202,8 @@ int32 URuinmatesBuildTestMapCommandlet::Main(const FString& Params)
 			Body->SetMobility(EComponentMobility::Movable);
 			Merchant->SetActorScale3D(FVector(0.7f, 0.7f, 1.6f));
 		}
+		// Stock only items the item table already marks as purchasable; no prices are touched.
+		Merchant->SetMerchantItems({TEXT("Bandage"), TEXT("Cans"), TEXT("AmmoBox"), TEXT("Circuit")});
 	}
 	else
 	{

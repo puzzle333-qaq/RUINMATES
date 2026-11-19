@@ -34,6 +34,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "RuinMates|Merchant")
 	bool SellsItem(FName ItemId) const { return MerchantItems.Contains(ItemId); }
 
+	/** Editor/tooling helper: replaces the stock list. Prices still come from DT_Items. */
+	void SetMerchantItems(const TArray<FName>& InItems) { MerchantItems = InItems; }
+
 	UFUNCTION(BlueprintPure, Category = "RuinMates|Merchant")
 	float GetInteractionDistance() const { return InteractionDistance; }
 
