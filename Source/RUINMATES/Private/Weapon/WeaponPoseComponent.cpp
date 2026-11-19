@@ -2,6 +2,7 @@
 
 #include "Animation/AnimInstance.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Character/RuinmatesCharacter.h"
 
 UWeaponPoseComponent::UWeaponPoseComponent()
 {
@@ -38,9 +39,6 @@ bool UWeaponPoseComponent::GetFabrikWorldTransform(FTransform& OutWorld) const
 	{
 		return false;
 	}
-
-	WeaponMesh->RefreshBoneTransforms();
-	WeaponMesh->UpdateComponentToWorld();
 
 	// Authored left-hand sockets only. Do not fall back to muzzle/barrel approximations.
 	const FName Candidates[] = {
@@ -110,7 +108,11 @@ void UWeaponPoseComponent::UpdatePose(float DeltaTime)
 		WantAlpha = 0.f;
 	}
 
-	if (bDisableLeftHandIKDuringReload && bIsReloading)
+	const ARuinmatesCharacter* Character = Cast<ARuinmatesCharacter>(GetOwner());
+	bIsReloading = Character ? Character->IsWeaponReloading() : bIsReloading;
+	const UAnimInstance* BodyAnim = IsValid(BodyMesh) ? BodyMesh->GetAnimInstance() : nullptr;
+	if ((bDisableLeftHandIKDuringReload && bIsReloading)
+		|| (BodyAnim && BodyAnim->IsAnyMontagePlaying() && !bIsReloading))
 	{
 		WantAlpha = 0.f;
 	}
