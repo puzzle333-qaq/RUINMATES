@@ -36,6 +36,9 @@ public:
 	// Table-level legacy id resolution (unknown id -> matching DisplayName), used by tooling/tests.
 	static FName ResolveItemIdInTable(const UDataTable* Table, FName ItemId, const FText& LegacyDisplayName);
 
+	// Table-level stack normalization (legacy id/name -> rows static fields). Used by tooling/tests.
+	static bool NormalizeStackInTable(const UDataTable* Table, FRuinmatesItemStack& Stack, bool bPreserveCount);
+
 	int32 GetItemBuyPrice(FName ItemId) const;
 	int32 GetItemSellPrice(FName ItemId) const;
 	int32 GetMaxStack(FName ItemId) const;

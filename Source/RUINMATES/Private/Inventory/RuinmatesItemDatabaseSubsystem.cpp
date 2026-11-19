@@ -120,11 +120,11 @@ FName URuinmatesItemDatabaseSubsystem::ResolveItemId(FName ItemId, const FText& 
 	return ResolveItemIdInTable(LoadedTable, ItemId, LegacyDisplayName);
 }
 
-bool URuinmatesItemDatabaseSubsystem::NormalizeStack(FRuinmatesItemStack& Stack, bool bPreserveCount) const
+bool URuinmatesItemDatabaseSubsystem::NormalizeStackInTable(const UDataTable* Table, FRuinmatesItemStack& Stack, bool bPreserveCount)
 {
 	const int32 OriginalCount = Stack.Count;
-	const FName ResolvedId = ResolveItemId(Stack.ItemId, Stack.DisplayName);
-	const FRuinmatesItemRow* Row = FindItemDefinition(ResolvedId);
+	const FName ResolvedId = ResolveItemIdInTable(Table, Stack.ItemId, Stack.DisplayName);
+	const FRuinmatesItemRow* Row = FindRowInTable(Table, ResolvedId);
 	if (!Row || OriginalCount <= 0)
 	{
 		return false;
@@ -135,6 +135,15 @@ bool URuinmatesItemDatabaseSubsystem::NormalizeStack(FRuinmatesItemStack& Stack,
 	Stack.Count = bPreserveCount ? OriginalCount : FMath::Min(OriginalCount, FMath::Max(1, Row->MaxStack));
 	Stack.bRevealed = bWasRevealed;
 	return true;
+}
+
+bool URuinmatesItemDatabaseSubsystem::NormalizeStack(FRuinmatesItemStack& Stack, bool bPreserveCount) const
+{
+	if (!IsValid(LoadedTable))
+	{
+		const_cast<URuinmatesItemDatabaseSubsystem*>(this)->EnsureLoaded();
+	}
+	return NormalizeStackInTable(LoadedTable, Stack, bPreserveCount);
 }
 
 FRuinmatesItemStack URuinmatesItemDatabaseSubsystem::CreateStackFromRow(const FRuinmatesItemRow& Row, FName ItemId, int32 Count)

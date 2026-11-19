@@ -115,8 +115,10 @@ Capture play settings are restored without saving altered editor defaults.
   `/Game/RUINMATES/UI/Textures/Items/T_Item_<RowName>` artwork. A row with no
   icon falls back to the neutral placeholder cell glyph, so new items without
   art never borrow another item's icon.
-- Current weapon data does not provide matching weapon portraits. Live HUD uses
-  a neutral weapon glyph; realistic sample weapons appear only in labelled demos.
+- Current weapon data provides no matching weapon portrait: the pack only has
+  M4A1, P226 and TacticalKnife art while the project ships a Glock18 data asset.
+  `UWeaponData::HUDIcon` is the single opt-in field for a real portrait; an unset
+  icon keeps the neutral weapon glyph in the live HUD.
 - No actual voice service was verified. Speaking states are demonstrated only
   in labelled previews. There are at most three other teammates, not four.
 - The fourth HUD weapon position is a reserved empty position when the existing
@@ -165,28 +167,30 @@ Tests (all Editor Context / Engine Filter):
 
 - `RuinMates.Inventory.BackpackLegacyCapacity` — legacy id resolves by display
   name; capacity counts the room left in the resolved stack.
+- `RuinMates.Inventory.BackpackTryAddLegacyId` — a legacy stack normalizes
+  through the table and two canonical adds merge into one slot.
 - `RuinMates.UI.V4.CategoryFilterRealItems` — filtering the real DT_Items rows
   compacts the grid, keeps each view's true slot index, never emits empty cells,
-  and the overview still returns every slot.
-- `RuinMates.UI.V4.ItemIconReferences` — every bound icon loads as a UI texture
-  and is the row's own `T_Item_<RowName>` asset.
+  the overview still returns every slot, and the "no matches" case uses a
+  synthetic key so no real category (e.g. Weapon) is assumed empty. Slot count
+  scales with the table instead of a fixed 12.
+- `RuinMates.UI.V4.ItemIconReferences` — every bound icon is a loadable project
+  UI texture; custom asset naming is accepted and unbound rows remain valid.
+- `RuinMates.UI.V4.WeaponHudIcon` — the optional weapon portrait loads as a UI
+  texture and an unset icon stays null-safe.
 
 Results:
 
 - `RUINMATESEditor Win64 Development` build: SUCCESS.
-- `Automation RunTests RuinMates`: 32/32 Success (see delivery note for the
+- `Automation RunTests RuinMates`: 34/34 Success (see delivery note for the
   exact run).
 
 Known issues recorded, not changed:
 
-- `URuinmatesBackpackComponent::TryAdd` still matches stacks by the raw
-  `ItemId` (`FRuinmatesItemStack::CanStackWith`). Stored slots are normalized, so
-  the buy/loot paths are unaffected, but a legacy-id stack added by other code
-  would open a second slot instead of merging.
-- `RuinmatesTerminalScreen.cpp` keeps a file-scope `using RuinmatesUI::WithAlpha;`
-  which is unity-build-unsafe for any future file in the same blob.
-- `URuinmatesGridScrollBox` does not reset the external scrollbar in
-  `ReleaseSlateResources`; no leak was observed in the current single-screen use.
+- `URuinmatesGridScrollBox` relies on `Super` to release `MyScrollBox`; the
+  external scrollbar is owned by its own UMG widget and the UPROPERTY keeps the
+  UObject alive. Reviewed 2026-11-19: no leak or dangling Slate ref found, no
+  change made.
 - Category filter drops empty cells by design, so a filtered page can end with a
   partially filled last row; this matches the compact layout requirement.
 

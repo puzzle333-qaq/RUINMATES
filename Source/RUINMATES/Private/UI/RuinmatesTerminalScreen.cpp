@@ -47,8 +47,6 @@
 #include "UI/RuinmatesSquadRadio.h"
 #include "UI/RuinmatesFieldHUD.h"
 
-using RuinmatesUI::WithAlpha;
-
 namespace
 {
 	// ---- Layout constants, 1920x1080 design units -----------------------------------------
@@ -233,7 +231,7 @@ namespace
 		UBorder* Plate = MakeBrushBorder(Tree, Name, RuinmatesUI::InsetBrush(), FMargin(12.f, 10.f));
 		Plate->SetVisibility(ESlateVisibility::HitTestInvisible);
 		UVerticalBox* Column = Tree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), FName(*(Name.ToString() + TEXT("Col"))));
-		AddV(Column, MakeIcon(Tree, FName(*(Name.ToString() + TEXT("Icon"))), Icon, 44.f, WithAlpha(RuinmatesUI::TextSecondary(), 0.75f)),
+		AddV(Column, MakeIcon(Tree, FName(*(Name.ToString() + TEXT("Icon"))), Icon, 44.f, RuinmatesUI::WithAlpha(RuinmatesUI::TextSecondary(), 0.75f)),
 			FMargin(0.f, 2.f, 0.f, 6.f), false, HAlign_Center);
 		UTextBlock* LabelText = MakeText(Tree, FName(*(Name.ToString() + TEXT("Label"))), RuinmatesUI::FontBold(16), RuinmatesUI::TextPrimary(), Label);
 		LabelText->SetJustification(ETextJustify::Center);
@@ -548,7 +546,7 @@ void URuinmatesTerminalScreen::BuildHeader(UVerticalBox* Column)
 	PageTitle = MakeText(WidgetTree, TEXT("PageTitle"), RuinmatesUI::FontBold(42, 120), RuinmatesUI::TextPrimary(),
 		NSLOCTEXT("RuinMatesUI", "PageInventory", "背包"));
 	PageTitle->SetShadowOffset(FVector2D(0.f, 2.f));
-	PageTitle->SetShadowColorAndOpacity(WithAlpha(RuinmatesUI::Cyan(), 0.25f));
+	PageTitle->SetShadowColorAndOpacity(RuinmatesUI::WithAlpha(RuinmatesUI::Cyan(), 0.25f));
 	AddH(Title, PageTitle);
 	AddH(Title, MakeImage(WidgetTree, TEXT("TitleDecoR"), RuinmatesUI::Image(TEXT("Decorations"), TEXT("T_UI_TitleDeco_R")), FVector2D(200.f, 17.f)),
 		FMargin(20.f, 0.f, 0.f, 0.f));
@@ -973,7 +971,7 @@ void URuinmatesTerminalScreen::RefreshTabStyles()
 		}
 		if (UImage* Icon = TabIcons.IsValidIndex(Index) ? TabIcons[Index].Get() : nullptr)
 		{
-			Icon->SetColorAndOpacity(bSelected ? FLinearColor::White : WithAlpha(RuinmatesUI::TextSecondary(), 0.85f));
+			Icon->SetColorAndOpacity(bSelected ? FLinearColor::White : RuinmatesUI::WithAlpha(RuinmatesUI::TextSecondary(), 0.85f));
 		}
 	}
 }

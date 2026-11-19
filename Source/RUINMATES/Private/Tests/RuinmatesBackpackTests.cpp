@@ -267,4 +267,74 @@ bool FRuinmatesBackpackLegacyCapacityTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+#
+
+// Legacy stacks are normalized through DT_Items before they merge into stored canonical stacks.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRuinmatesBackpackTryAddLegacyTest, "RuinMates.Inventory.BackpackTryAddLegacyId",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FRuinmatesBackpackTryAddLegacyTest::RunTest(const FString& Parameters)
+{
+	UDataTable* Table = LoadObject<UDataTable>(nullptr, TEXT("/Game/RUINMATES/Data/Items/DT_Items.DT_Items"));
+	if (!TestNotNull(TEXT("DT_Items exists"), Table))
+	{
+		return false;
+	}
+
+	// A pre-database stack: numeric id plus the localized name.
+	FRuinmatesItemStack Legacy;
+	Legacy.ItemId = TEXT("1");
+	Legacy.DisplayName = FText::FromString(TEXT("绷带"));
+	Legacy.Count = 4;
+	TestTrue(TEXT("Legacy stack normalizes against the table"),
+		URuinmatesItemDatabaseSubsystem::NormalizeStackInTable(Table, Legacy, true));
+	TestEqual(TEXT("Normalized stack takes the row id"), Legacy.ItemId, FName(TEXT("Bandage")));
+	TestEqual(TEXT("Normalized stack keeps its count"), Legacy.Count, 4);
+
+	const FRuinmatesItemRow* Row = URuinmatesItemDatabaseSubsystem::FindRowInTable(Table, TEXT("Bandage"));
+	if (TestNotNull(TEXT("Bandage row exists"), Row))
+	{
+		TestEqual(TEXT("Normalized quality comes from the row"),
+			static_cast<int32>(Legacy.Quality), static_cast<int32>(Row->Quality));
+		TestEqual(TEXT("Normalized max stack comes from the row"), Legacy.MaxStack, FMath::Max(1, Row->MaxStack));
+	}
+
+	UWorld* World = UWorld::CreateWorld(EWorldType::Game, false, TEXT("RuinMatesBackpackTryAddLegacyTest"));
+	if (!TestNotNull(TEXT("World"), World))
+	{
+		return false;
+	}
+	World->AddToRoot();
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	SpawnParams.ObjectFlags |= RF_Transient;
+	ARuinmatesCharacter* Character = World->SpawnActor<ARuinmatesCharacter>(SpawnParams);
+	URuinmatesBackpackComponent* Backpack = Character ? Character->GetBackpack() : nullptr;
+	if (!TestTrue(TEXT("Character and backpack exist"), IsValid(Character) && IsValid(Backpack)))
+	{
+		World->DestroyWorld(false);
+		World->RemoveFromRoot();
+		return false;
+	}
+
+	// Bare test worlds have no game instance, so TryAdd sees a canonical stack here exactly like the
+	// normalized loot and purchase paths do in game.
+	FRuinmatesItemStack First = Legacy;
+	First.Count = 3;
+	TestEqual(TEXT("Canonical stack is added"), Backpack->TryAdd(First), 3);
+	FRuinmatesItemStack Second = Legacy;
+	Second.Count = 4;
+	TestEqual(TEXT("Second canonical stack is accepted"), Backpack->TryAdd(Second), 4);
+	TestEqual(TEXT("Both adds share one slot"), Backpack->GetUsedSlotCount(), 1);
+	if (Backpack->GetSlots().IsValidIndex(0))
+	{
+		TestEqual(TEXT("Merged count keeps the sum"), Backpack->GetSlots()[0].Count, 7);
+		TestEqual(TEXT("Merged slot keeps the canonical id"), Backpack->GetSlots()[0].ItemId, FName(TEXT("Bandage")));
+	}
+
+	World->DestroyWorld(false);
+	World->RemoveFromRoot();
+	return true;
+}
 #endif
