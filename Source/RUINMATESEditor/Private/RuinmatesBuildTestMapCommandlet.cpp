@@ -170,6 +170,9 @@ int32 URuinmatesBuildTestMapCommandlet::Main(const FString& Params)
 
 	// 2) Shooting range.
 	MarkRegion(World, TEXT("02 武器射击"), FVector(1200.f, 0.f, 0.f));
+	// The project has one configured weapon blueprint; place it as a pickup source for the range.
+	SpawnBlueprint(World, TEXT("/Game/RUINMATES/Blueprint/Weapon/BP_Glock18.BP_Glock18_C"), FVector(1180.f, 0.f, 70.f));
+	SpawnBlueprint(World, TEXT("/Game/RUINMATES/Blueprint/Weapon/BP_Glock18.BP_Glock18_C"), FVector(1180.f, 140.f, 70.f));
 	for (int32 Target = 0; Target < 3; ++Target)
 	{
 		SpawnBlock(World, Cube, FVector(1400.f, (Target - 1) * 400.f, 90.f), FVector(0.8f, 0.8f, 1.8f),
