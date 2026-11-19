@@ -1,0 +1,82 @@
+[
+  {
+    "shot": "01_hip",
+    "anim_class": "/Game/RUINMATES/Blueprint/Character/ABP_RuinmatesCombat.ABP_RuinmatesCombat_C",
+    "aim_pitch": "0.0",
+    "aim_yaw": "0.0",
+    "aim_offset": "<Object '/Game/Characters/Mannequins/Anims/Pistol/Aim/AO_Pistol.AO_Pistol' (0x000001D426D9A200) Class 'AimOffsetBlendSpace'>",
+    "locomotion": 0,
+    "camera": "<Struct 'Vector' (0x000001D41C163F30) {x: -300.000000, y: 50.000000, z: 362.012643}>",
+    "mesh_hidden": false
+  },
+  {
+    "shot": "02_aim",
+    "anim_class": "/Game/RUINMATES/Blueprint/Character/ABP_RuinmatesCombat.ABP_RuinmatesCombat_C",
+    "aim_pitch": "0.0",
+    "aim_yaw": "0.0",
+    "aim_offset": "<Object '/Game/Characters/Mannequins/Anims/Pistol/Aim/AO_Pistol.AO_Pistol' (0x000001D426D9A200) Class 'AimOffsetBlendSpace'>",
+    "locomotion": 0,
+    "camera": "<Struct 'Vector' (0x000001D41C163300) {x: -155.000000, y: 75.000000, z: 392.012643}>",
+    "mesh_hidden": false
+  },
+  {
+    "shot": "03_aim_up",
+    "anim_class": "/Game/RUINMATES/Blueprint/Character/ABP_RuinmatesCombat.ABP_RuinmatesCombat_C",
+    "aim_pitch": "0.5",
+    "aim_yaw": "0.0",
+    "aim_offset": "<Object '/Game/Characters/Mannequins/Anims/Pistol/Aim/AO_Pistol.AO_Pistol' (0x000001D426D9A200) Class 'AimOffsetBlendSpace'>",
+    "locomotion": 0,
+    "camera": "<Struct 'Vector' (0x000001D41C187210) {x: -129.956890, y: 75.000000, z: 261.553228}>",
+    "mesh_hidden": false
+  },
+  {
+    "shot": "04_aim_down",
+    "anim_class": "/Game/RUINMATES/Blueprint/Character/ABP_RuinmatesCombat.ABP_RuinmatesCombat_C",
+    "aim_pitch": "-0.5",
+    "aim_yaw": "0.0",
+    "aim_offset": "<Object '/Game/Characters/Mannequins/Anims/Pistol/Aim/AO_Pistol.AO_Pistol' (0x000001D426D9A200) Class 'AimOffsetBlendSpace'>",
+    "locomotion": 0,
+    "camera": "<Struct 'Vector' (0x000001D41C185F00) {x: -80.459416, y: 75.000000, z: 501.969533}>",
+    "mesh_hidden": false
+  },
+  {
+    "shot": "05_fire",
+    "anim_class": "/Game/RUINMATES/Blueprint/Character/ABP_RuinmatesCombat.ABP_RuinmatesCombat_C",
+    "aim_pitch": "0.0",
+    "aim_yaw": "0.0",
+    "aim_offset": "<Object '/Game/Characters/Mannequins/Anims/Pistol/Aim/AO_Pistol.AO_Pistol' (0x000001D426D9A200) Class 'AimOffsetBlendSpace'>",
+    "locomotion": 0,
+    "camera": "<Struct 'Vector' (0x000001D4432F24F0) {x: -155.000000, y: 75.000000, z: 392.012643}>",
+    "mesh_hidden": false
+  },
+  {
+    "shot": "06_reload",
+    "anim_class": "/Game/RUINMATES/Blueprint/Character/ABP_RuinmatesCombat.ABP_RuinmatesCombat_C",
+    "aim_pitch": "0.0",
+    "aim_yaw": "0.0",
+    "aim_offset": "<Object '/Game/Characters/Mannequins/Anims/Pistol/Aim/AO_Pistol.AO_Pistol' (0x000001D426D9A200) Class 'AimOffsetBlendSpace'>",
+    "locomotion": 0,
+    "camera": "<Struct 'Vector' (0x000001D4432F2630) {x: -155.000000, y: 75.000000, z: 392.012643}>",
+    "mesh_hidden": false
+  },
+  {
+    "shot": "07_crouch",
+    "anim_class": "/Game/RUINMATES/Blueprint/Character/ABP_RuinmatesCombat.ABP_RuinmatesCombat_C",
+    "aim_pitch": "0.0",
+    "aim_yaw": "0.0",
+    "aim_offset": "<Object '/Game/Characters/Mannequins/Anims/Pistol/Aim/AO_Pistol.AO_Pistol' (0x000001D426D9A200) Class 'AimOffsetBlendSpace'>",
+    "locomotion": 4,
+    "camera": "<Struct 'Vector' (0x000001D4432F2810) {x: -300.000000, y: 50.000000, z: 332.012643}>",
+    "mesh_hidden": false
+  },
+  {
+    "shot": "08_jump",
+    "anim_class": "/Game/RUINMATES/Blueprint/Character/ABP_RuinmatesCombat.ABP_RuinmatesCombat_C",
+    "aim_pitch": "0.0",
+    "aim_yaw": "0.0",
+    "aim_offset": "<Object '/Game/Characters/Mannequins/Anims/Pistol/Aim/AO_Pistol.AO_Pistol' (0x000001D426D9A200) Class 'AimOffsetBlendSpace'>",
+    "locomotion": 6,
+    "camera": "<Struct 'Vector' (0x000001D4432F29F0) {x: -300.000000, y: 50.000000, z: 372.013536}>",
+    "mesh_hidden": false
+  }
+]

@@ -587,7 +587,7 @@ void ARuinmatesCharacter::UpdateArmedFacing()
 
 void ARuinmatesCharacter::UpdateAimCamera(float DeltaSeconds)
 {
-	if (!IsLocallyControlled() || !IsValid(CameraBoom))
+	if (!IsValid(CameraBoom))
 	{
 		return;
 	}

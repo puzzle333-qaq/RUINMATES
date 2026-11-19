@@ -1,0 +1,925 @@
+﻿{
+	"devices": [
+		{
+			"deviceName": "PUZZLE-LAPTOP",
+			"instance": "686013E94B3778DEC8618BAC995E8CC8",
+			"instanceName": "PUZZLE-LAPTOP-34680",
+			"platform": "WindowsEditor",
+			"oSVersion": "Windows 11 (25H2) [10.0.26200.9974] ",
+			"model": "Default",
+			"gPU": "Intel(R) UHD Graphics",
+			"cPUModel": "Intel(R) Core(TM) i9-14900HX",
+			"rAMInGB": 16,
+			"renderMode": "SM6",
+			"rHI": "",
+			"appInstanceLog": ""
+		}
+	],
+	"reportCreatedOn": "2026.11.19-12.42.34",
+	"succeeded": 36,
+	"succeededWithWarnings": 5,
+	"failed": 0,
+	"notRun": 0,
+	"inProcess": 0,
+	"totalDuration": 0.82200342416763306,
+	"comparisonExported": false,
+	"comparisonExportDirectory": "",
+	"tests": [
+		{
+			"testDisplayName": "InteractAuthority",
+			"fullTestPath": "RuinMates.Batch1.InteractAuthority",
+			"tags": [],
+			"state": "Success",
+			"deviceInstance": [
+				"686013E94B3778DEC8618BAC995E8CC8"
+			],
+			"duration": 0.016201000660657883,
+			"dateTime": "2026.11.19-12.42.32",
+			"entries": [],
+			"warnings": 0,
+			"errors": 0,
+			"artifacts": []
+		},
+		{
+			"testDisplayName": "StatsAuthority",
+			"fullTestPath": "RuinMates.Batch1.StatsAuthority",
+			"tags": [],
+			"state": "Success",
+			"deviceInstance": [
+				"686013E94B3778DEC8618BAC995E8CC8"
+			],
+			"duration": 0.017287898808717728,
+			"dateTime": "2026.11.19-12.42.32",
+			"entries": [],
+			"warnings": 0,
+			"errors": 0,
+			"artifacts": []
+		},
+		{
+			"testDisplayName": "StatsComponent",
+			"fullTestPath": "RuinMates.Batch1.StatsComponent",
+			"tags": [],
+			"state": "Success",
+			"deviceInstance": [
+				"686013E94B3778DEC8618BAC995E8CC8"
+			],
+			"duration": 0.016982000321149826,
+			"dateTime": "2026.11.19-12.42.33",
+			"entries": [],
+			"warnings": 0,
+			"errors": 0,
+			"artifacts": []
+		},
+		{
+			"testDisplayName": "WeaponDataNullSafe",
+			"fullTestPath": "RuinMates.Batch1.WeaponDataNullSafe",
+			"tags": [],
+			"state": "Success",
+			"deviceInstance": [
+				"686013E94B3778DEC8618BAC995E8CC8"
+			],
+			"duration": 0.018204603344202042,
+			"dateTime": "2026.11.19-12.42.33",
+			"entries": [],
+			"warnings": 0,
+			"errors": 0,
+			"artifacts": []
+		},
+		{
+			"testDisplayName": "WeaponParams",
+			"fullTestPath": "RuinMates.Batch1.WeaponParams",
+			"tags": [],
+			"state": "Success",
+			"deviceInstance": [
+				"686013E94B3778DEC8618BAC995E8CC8"
+			],
+			"duration": 0.016226999461650848,
+			"dateTime": "2026.11.19-12.42.33",
+			"entries": [],
+			"warnings": 0,
+			"errors": 0,
+			"artifacts": []
+		},
+		{
+			"testDisplayName": "WeaponTypeTags",
+			"fullTestPath": "RuinMates.Batch1.WeaponTypeTags",
+			"tags": [],
+			"state": "Success",
+			"deviceInstance": [
+				"686013E94B3778DEC8618BAC995E8CC8"
+			],
+			"duration": 0.015984296798706055,
+			"dateTime": "2026.11.19-12.42.33",
+			"entries": [],
+			"warnings": 0,
+			"errors": 0,
+			"artifacts": []
+		},
+		{
+			"testDisplayName": "AnimSelection",
+			"fullTestPath": "RuinMates.Batch2.AnimSelection",
+			"tags": [],
+			"state": "Success",
+			"deviceInstance": [
+				"686013E94B3778DEC8618BAC995E8CC8"
+			],
+			"duration": 0.015525002032518387,
+			"dateTime": "2026.11.19-12.42.33",
+			"entries": [],
+			"warnings": 0,
+			"errors": 0,
+			"artifacts": []
+		},
+		{
+			"testDisplayName": "BaseWeaponFire",
+			"fullTestPath": "RuinMates.Batch2.BaseWeaponFire",
+			"tags": [],
+			"state": "Success",
+			"deviceInstance": [
+				"686013E94B3778DEC8618BAC995E8CC8"
+			],
+			"duration": 0.020867202430963516,
+			"dateTime": "2026.11.19-12.42.33",
+			"entries": [],
+			"warnings": 0,
+			"errors": 0,
+			"artifacts": []
+		},
+		{
+			"testDisplayName": "BaseWeaponTrace",
+			"fullTestPath": "RuinMates.Batch2.BaseWeaponTrace",
+			"tags": [],
+			"state": "Success",
+			"deviceInstance": [
+				"686013E94B3778DEC8618BAC995E8CC8"
+			],
+			"duration": 0.01848829910159111,
+			"dateTime": "2026.11.19-12.42.33",
+			"entries": [
+				{
+					"event":
+					{
+						"type": "Warning",
+						"message": "LogSpawn: UWorld::DestroyActor: World has no context! World: RuinMatesBaseWeaponTraceTest, Actor: /Temp/Untitled_2.RuinMatesBaseWeaponTraceTest:PersistentLevel.Actor_1",
+						"context": "log",
+						"artifact": "00000000000000000000000000000000"
+					},
+					"filename": "",
+					"lineNumber": -1,
+					"timestamp": "2026.11.19-12.42.33"
+				},
+				{
+					"event":
+					{
+						"type": "Warning",
+						"message": "LogSpawn: UWorld::DestroyActor: World has no context! World: RuinMatesBaseWeaponTraceTest, Actor: /Temp/Untitled_2.RuinMatesBaseWeaponTraceTest:PersistentLevel.BaseWeapon_0",
+						"context": "log",
+						"artifact": "00000000000000000000000000000000"
+					},
+					"filename": "",
+					"lineNumber": -1,
+					"timestamp": "2026.11.19-12.42.33"
+				},
+				{
+					"event":
+					{
+						"type": "Warning",
+						"message": "LogSpawn: UWorld::DestroyActor: World has no context! World: RuinMatesBaseWeaponTraceTest, Actor: /Temp/Untitled_2.RuinMatesBaseWeaponTraceTest:PersistentLevel.RuinmatesCharacter_0",
+						"context": "log",
+						"artifact": "00000000000000000000000000000000"
+					},
+					"filename": "",
+					"lineNumber": -1,
+					"timestamp": "2026.11.19-12.42.33"
+				},
+				{
+					"event":
+					{
+						"type": "Warning",
+						"message": "LogSpawn: UWorld::DestroyActor: World has no context! World: RuinMatesBaseWeaponTraceTest, Actor: /Temp/Untitled_2.RuinMatesBaseWeaponTraceTest:PersistentLevel.Actor_0",
+						"context": "log",
+						"artifact": "00000000000000000000000000000000"
+					},
+					"filename": "",
+					"lineNumber": -1,
+					"timestamp": "2026.11.19-12.42.33"
+				}
+			],
+			"warnings": 4,
+			"errors": 0,
+			"artifacts": []
+		},
+		{
+			"testDisplayName": "CharacterMovement",
+			"fullTestPath": "RuinMates.Batch2.CharacterMovement",
+			"tags": [],
+			"state": "Success",
+			"deviceInstance": [
+				"686013E94B3778DEC8618BAC995E8CC8"
+			],
+			"duration": 0.01917479932308197,
+			"dateTime": "2026.11.19-12.42.33",
+			"entries": [],
+			"warnings": 0,
+			"errors": 0,
+			"artifacts": []
+		},
+		{
+			"testDisplayName": "EquipPoseBind",
+			"fullTestPath": "RuinMates.Batch2.EquipPoseBind",
+			"tags": [],
+			"state": "Success",
+			"deviceInstance": [
+				"686013E94B3778DEC8618BAC995E8CC8"
+			],
+			"duration": 0.12289480119943619,
+			"dateTime": "2026.11.19-12.42.33",
+			"entries": [],
+			"warnings": 0,
+			"errors": 0,
+			"artifacts": []
+		},
+		{
+			"testDisplayName": "WeaponPoseNullSafe",
+			"fullTestPath": "RuinMates.Batch2.WeaponPoseNullSafe",
+			"tags": [],
+			"state": "Success",
+			"deviceInstance": [
+				"686013E94B3778DEC8618BAC995E8CC8"
+			],
+			"duration": 0.016595900058746338,
+			"dateTime": "2026.11.19-12.42.33",
+			"entries": [],
+			"warnings": 0,
+			"errors": 0,
+			"artifacts": []
+		},
+		{
+			"testDisplayName": "WeaponThirdPersonAttach",
+			"fullTestPath": "RuinMates.Batch2.WeaponThirdPersonAttach",
+			"tags": [],
+			"state": "Success",
+			"deviceInstance": [
+				"686013E94B3778DEC8618BAC995E8CC8"
+			],
+			"duration": 0.020915400236845016,
+			"dateTime": "2026.11.19-12.42.33",
+			"entries": [
+				{
+					"event":
+					{
+						"type": "Warning",
+						"message": "LogSpawn: UWorld::DestroyActor: World has no context! World: RuinMatesWeaponAttachTest, Actor: /Temp/Untitled_5.RuinMatesWeaponAttachTest:PersistentLevel.Actor_0",
+						"context": "log",
+						"artifact": "00000000000000000000000000000000"
+					},
+					"filename": "",
+					"lineNumber": -1,
+					"timestamp": "2026.11.19-12.42.33"
+				},
+				{
+					"event":
+					{
+						"type": "Warning",
+						"message": "LogSpawn: UWorld::DestroyActor: World has no context! World: RuinMatesWeaponAttachTest, Actor: /Temp/Untitled_5.RuinMatesWeaponAttachTest:PersistentLevel.RuinmatesCharacter_0",
+						"context": "log",
+						"artifact": "00000000000000000000000000000000"
+					},
+					"filename": "",
+					"lineNumber": -1,
+					"timestamp": "2026.11.19-12.42.33"
+				}
+			],
+			"warnings": 2,
+			"errors": 0,
+			"artifacts": []
+		},
+		{
+			"testDisplayName": "WeaponTypes",
+			"fullTestPath": "RuinMates.Batch2.WeaponTypes",
+			"tags": [],
+			"state": "Success",
+			"deviceInstance": [
+				"686013E94B3778DEC8618BAC995E8CC8"
+			],
+			"duration": 0.012954201549291611,
+			"dateTime": "2026.11.19-12.42.33",
+			"entries": [],
+			"warnings": 0,
+			"errors": 0,
+			"artifacts": []
+		},
+		{
+			"testDisplayName": "GameModeLimits",
+			"fullTestPath": "RuinMates.Batch3.GameModeLimits",
+			"tags": [],
+			"state": "Success",
+			"deviceInstance": [
+				"686013E94B3778DEC8618BAC995E8CC8"
+			],
+			"duration": 0.016891900449991226,
+			"dateTime": "2026.11.19-12.42.33",
+			"entries": [],
+			"warnings": 0,
+			"errors": 0,
+			"artifacts": []
+		},
+		{
+			"testDisplayName": "SaveCampaign",
+			"fullTestPath": "RuinMates.Batch3.SaveCampaign",
+			"tags": [],
+			"state": "Success",
+			"deviceInstance": [
+				"686013E94B3778DEC8618BAC995E8CC8"
+			],
+			"duration": 0.015846297144889832,
+			"dateTime": "2026.11.19-12.42.33",
+			"entries": [],
+			"warnings": 0,
+			"errors": 0,
+			"artifacts": []
+		},
+		{
+			"testDisplayName": "SessionBoundary",
+			"fullTestPath": "RuinMates.Batch3.SessionBoundary",
+			"tags": [],
+			"state": "Success",
+			"deviceInstance": [
+				"686013E94B3778DEC8618BAC995E8CC8"
+			],
+			"duration": 0.017442800104618073,
+			"dateTime": "2026.11.19-12.42.33",
+			"entries": [],
+			"warnings": 0,
+			"errors": 0,
+			"artifacts": []
+		},
+		{
+			"testDisplayName": "FriendlyFire",
+			"fullTestPath": "RuinMates.Combat.FriendlyFire",
+			"tags": [],
+			"state": "Success",
+			"deviceInstance": [
+				"686013E94B3778DEC8618BAC995E8CC8"
+			],
+			"duration": 0.018808700144290924,
+			"dateTime": "2026.11.19-12.42.33",
+			"entries": [],
+			"warnings": 0,
+			"errors": 0,
+			"artifacts": []
+		},
+		{
+			"testDisplayName": "BackpackExactTrade",
+			"fullTestPath": "RuinMates.Economy.BackpackExactTrade",
+			"tags": [],
+			"state": "Success",
+			"deviceInstance": [
+				"686013E94B3778DEC8618BAC995E8CC8"
+			],
+			"duration": 0.018536001443862915,
+			"dateTime": "2026.11.19-12.42.33",
+			"entries": [],
+			"warnings": 0,
+			"errors": 0,
+			"artifacts": []
+		},
+		{
+			"testDisplayName": "ItemDatabase",
+			"fullTestPath": "RuinMates.Economy.ItemDatabase",
+			"tags": [],
+			"state": "Success",
+			"deviceInstance": [
+				"686013E94B3778DEC8618BAC995E8CC8"
+			],
+			"duration": 0.01504109799861908,
+			"dateTime": "2026.11.19-12.42.33",
+			"entries": [],
+			"warnings": 0,
+			"errors": 0,
+			"artifacts": []
+		},
+		{
+			"testDisplayName": "SharedFunds",
+			"fullTestPath": "RuinMates.Economy.SharedFunds",
+			"tags": [],
+			"state": "Success",
+			"deviceInstance": [
+				"686013E94B3778DEC8618BAC995E8CC8"
+			],
+			"duration": 0.017420299351215363,
+			"dateTime": "2026.11.19-12.42.33",
+			"entries": [],
+			"warnings": 0,
+			"errors": 0,
+			"artifacts": []
+		},
+		{
+			"testDisplayName": "AuthorityAndPossess",
+			"fullTestPath": "RuinMates.Inventory.AuthorityAndPossess",
+			"tags": [],
+			"state": "Success",
+			"deviceInstance": [
+				"686013E94B3778DEC8618BAC995E8CC8"
+			],
+			"duration": 0.01782279834151268,
+			"dateTime": "2026.11.19-12.42.33",
+			"entries": [
+				{
+					"event":
+					{
+						"type": "Warning",
+						"message": "LogSkinnedMeshComp: GetSocketByName(hand_r): No SkeletalMesh for Component(CharacterMesh0) Actor(RuinmatesCharacter /Temp/Untitled_10.RuinMatesInventoryAuthorityAndPossessTest:PersistentLevel.RuinmatesCharacter_1)",
+						"context": "log",
+						"artifact": "00000000000000000000000000000000"
+					},
+					"filename": "",
+					"lineNumber": -1,
+					"timestamp": "2026.11.19-12.42.34"
+				},
+				{
+					"event":
+					{
+						"type": "Warning",
+						"message": "LogSkinnedMeshComp: GetSocketByName(hand_r): No SkeletalMesh for Component(CharacterMesh0) Actor(RuinmatesCharacter /Temp/Untitled_10.RuinMatesInventoryAuthorityAndPossessTest:PersistentLevel.RuinmatesCharacter_1)",
+						"context": "log",
+						"artifact": "00000000000000000000000000000000"
+					},
+					"filename": "",
+					"lineNumber": -1,
+					"timestamp": "2026.11.19-12.42.34"
+				},
+				{
+					"event":
+					{
+						"type": "Warning",
+						"message": "LogSkinnedMeshComp: GetSocketByName(WeaponSocket): No SkeletalMesh for Component(CharacterMesh0) Actor(RuinmatesCharacter /Temp/Untitled_10.RuinMatesInventoryAuthorityAndPossessTest:PersistentLevel.RuinmatesCharacter_1)",
+						"context": "log",
+						"artifact": "00000000000000000000000000000000"
+					},
+					"filename": "",
+					"lineNumber": -1,
+					"timestamp": "2026.11.19-12.42.34"
+				},
+				{
+					"event":
+					{
+						"type": "Warning",
+						"message": "LogSkinnedMeshComp: GetSocketByName(RifleSocket): No SkeletalMesh for Component(CharacterMesh0) Actor(RuinmatesCharacter /Temp/Untitled_10.RuinMatesInventoryAuthorityAndPossessTest:PersistentLevel.RuinmatesCharacter_1)",
+						"context": "log",
+						"artifact": "00000000000000000000000000000000"
+					},
+					"filename": "",
+					"lineNumber": -1,
+					"timestamp": "2026.11.19-12.42.34"
+				},
+				{
+					"event":
+					{
+						"type": "Warning",
+						"message": "LogSkinnedMeshComp: GetSocketByName(HandGrip_R): No SkeletalMesh for Component(CharacterMesh0) Actor(RuinmatesCharacter /Temp/Untitled_10.RuinMatesInventoryAuthorityAndPossessTest:PersistentLevel.RuinmatesCharacter_1)",
+						"context": "log",
+						"artifact": "00000000000000000000000000000000"
+					},
+					"filename": "",
+					"lineNumber": -1,
+					"timestamp": "2026.11.19-12.42.34"
+				},
+				{
+					"event":
+					{
+						"type": "Warning",
+						"message": "LogSkinnedMeshComp: GetSocketByName(hand_r): No SkeletalMesh for Component(CharacterMesh0) Actor(RuinmatesCharacter /Temp/Untitled_10.RuinMatesInventoryAuthorityAndPossessTest:PersistentLevel.RuinmatesCharacter_1)",
+						"context": "log",
+						"artifact": "00000000000000000000000000000000"
+					},
+					"filename": "",
+					"lineNumber": -1,
+					"timestamp": "2026.11.19-12.42.34"
+				},
+				{
+					"event":
+					{
+						"type": "Warning",
+						"message": "LogSpawn: UWorld::DestroyActor: World has no context! World: RuinMatesInventoryAuthorityAndPossessTest, Actor: /Temp/Untitled_10.RuinMatesInventoryAuthorityAndPossessTest:PersistentLevel.BaseWeapon_0",
+						"context": "log",
+						"artifact": "00000000000000000000000000000000"
+					},
+					"filename": "",
+					"lineNumber": -1,
+					"timestamp": "2026.11.19-12.42.34"
+				},
+				{
+					"event":
+					{
+						"type": "Warning",
+						"message": "LogSkinnedMeshComp: GetSocketByName(hand_r): No SkeletalMesh for Component(CharacterMesh0) Actor(RuinmatesCharacter /Temp/Untitled_10.RuinMatesInventoryAuthorityAndPossessTest:PersistentLevel.RuinmatesCharacter_1)",
+						"context": "log",
+						"artifact": "00000000000000000000000000000000"
+					},
+					"filename": "",
+					"lineNumber": -1,
+					"timestamp": "2026.11.19-12.42.34"
+				},
+				{
+					"event":
+					{
+						"type": "Warning",
+						"message": "LogSkinnedMeshComp: GetSocketByName(hand_r): No SkeletalMesh for Component(CharacterMesh0) Actor(RuinmatesCharacter /Temp/Untitled_10.RuinMatesInventoryAuthorityAndPossessTest:PersistentLevel.RuinmatesCharacter_1)",
+						"context": "log",
+						"artifact": "00000000000000000000000000000000"
+					},
+					"filename": "",
+					"lineNumber": -1,
+					"timestamp": "2026.11.19-12.42.34"
+				},
+				{
+					"event":
+					{
+						"type": "Warning",
+						"message": "LogSkinnedMeshComp: GetSocketByName(WeaponSocket): No SkeletalMesh for Component(CharacterMesh0) Actor(RuinmatesCharacter /Temp/Untitled_10.RuinMatesInventoryAuthorityAndPossessTest:PersistentLevel.RuinmatesCharacter_1)",
+						"context": "log",
+						"artifact": "00000000000000000000000000000000"
+					},
+					"filename": "",
+					"lineNumber": -1,
+					"timestamp": "2026.11.19-12.42.34"
+				},
+				{
+					"event":
+					{
+						"type": "Warning",
+						"message": "LogSkinnedMeshComp: GetSocketByName(RifleSocket): No SkeletalMesh for Component(CharacterMesh0) Actor(RuinmatesCharacter /Temp/Untitled_10.RuinMatesInventoryAuthorityAndPossessTest:PersistentLevel.RuinmatesCharacter_1)",
+						"context": "log",
+						"artifact": "00000000000000000000000000000000"
+					},
+					"filename": "",
+					"lineNumber": -1,
+					"timestamp": "2026.11.19-12.42.34"
+				},
+				{
+					"event":
+					{
+						"type": "Warning",
+						"message": "LogSkinnedMeshComp: GetSocketByName(HandGrip_R): No SkeletalMesh for Component(CharacterMesh0) Actor(RuinmatesCharacter /Temp/Untitled_10.RuinMatesInventoryAuthorityAndPossessTest:PersistentLevel.RuinmatesCharacter_1)",
+						"context": "log",
+						"artifact": "00000000000000000000000000000000"
+					},
+					"filename": "",
+					"lineNumber": -1,
+					"timestamp": "2026.11.19-12.42.34"
+				},
+				{
+					"event":
+					{
+						"type": "Warning",
+						"message": "LogSkinnedMeshComp: GetSocketByName(hand_r): No SkeletalMesh for Component(CharacterMesh0) Actor(RuinmatesCharacter /Temp/Untitled_10.RuinMatesInventoryAuthorityAndPossessTest:PersistentLevel.RuinmatesCharacter_1)",
+						"context": "log",
+						"artifact": "00000000000000000000000000000000"
+					},
+					"filename": "",
+					"lineNumber": -1,
+					"timestamp": "2026.11.19-12.42.34"
+				},
+				{
+					"event":
+					{
+						"type": "Warning",
+						"message": "LogSpawn: UWorld::DestroyActor: World has no context! World: RuinMatesInventoryAuthorityAndPossessTest, Actor: /Temp/Untitled_10.RuinMatesInventoryAuthorityAndPossessTest:PersistentLevel.PlayerController_0",
+						"context": "log",
+						"artifact": "00000000000000000000000000000000"
+					},
+					"filename": "",
+					"lineNumber": -1,
+					"timestamp": "2026.11.19-12.42.34"
+				},
+				{
+					"event":
+					{
+						"type": "Warning",
+						"message": "LogSpawn: UWorld::DestroyActor: World has no context! World: RuinMatesInventoryAuthorityAndPossessTest, Actor: /Temp/Untitled_10.RuinMatesInventoryAuthorityAndPossessTest:PersistentLevel.RuinmatesCharacter_1",
+						"context": "log",
+						"artifact": "00000000000000000000000000000000"
+					},
+					"filename": "",
+					"lineNumber": -1,
+					"timestamp": "2026.11.19-12.42.34"
+				}
+			],
+			"warnings": 15,
+			"errors": 0,
+			"artifacts": []
+		},
+		{
+			"testDisplayName": "BackpackLegacyCapacity",
+			"fullTestPath": "RuinMates.Inventory.BackpackLegacyCapacity",
+			"tags": [],
+			"state": "Success",
+			"deviceInstance": [
+				"686013E94B3778DEC8618BAC995E8CC8"
+			],
+			"duration": 0.011555299162864685,
+			"dateTime": "2026.11.19-12.42.34",
+			"entries": [],
+			"warnings": 0,
+			"errors": 0,
+			"artifacts": []
+		},
+		{
+			"testDisplayName": "BackpackMoveSnapshots",
+			"fullTestPath": "RuinMates.Inventory.BackpackMoveSnapshots",
+			"tags": [],
+			"state": "Success",
+			"deviceInstance": [
+				"686013E94B3778DEC8618BAC995E8CC8"
+			],
+			"duration": 0.018656101077795029,
+			"dateTime": "2026.11.19-12.42.34",
+			"entries": [],
+			"warnings": 0,
+			"errors": 0,
+			"artifacts": []
+		},
+		{
+			"testDisplayName": "BackpackSort",
+			"fullTestPath": "RuinMates.Inventory.BackpackSort",
+			"tags": [],
+			"state": "Success",
+			"deviceInstance": [
+				"686013E94B3778DEC8618BAC995E8CC8"
+			],
+			"duration": 0.019112702459096909,
+			"dateTime": "2026.11.19-12.42.34",
+			"entries": [],
+			"warnings": 0,
+			"errors": 0,
+			"artifacts": []
+		},
+		{
+			"testDisplayName": "BackpackSortCategories",
+			"fullTestPath": "RuinMates.Inventory.BackpackSortCategories",
+			"tags": [],
+			"state": "Success",
+			"deviceInstance": [
+				"686013E94B3778DEC8618BAC995E8CC8"
+			],
+			"duration": 0.018589101731777191,
+			"dateTime": "2026.11.19-12.42.34",
+			"entries": [],
+			"warnings": 0,
+			"errors": 0,
+			"artifacts": []
+		},
+		{
+			"testDisplayName": "BackpackSortEdges",
+			"fullTestPath": "RuinMates.Inventory.BackpackSortEdges",
+			"tags": [],
+			"state": "Success",
+			"deviceInstance": [
+				"686013E94B3778DEC8618BAC995E8CC8"
+			],
+			"duration": 0.017825599759817123,
+			"dateTime": "2026.11.19-12.42.34",
+			"entries": [],
+			"warnings": 0,
+			"errors": 0,
+			"artifacts": []
+		},
+		{
+			"testDisplayName": "BackpackSplit",
+			"fullTestPath": "RuinMates.Inventory.BackpackSplit",
+			"tags": [],
+			"state": "Success",
+			"deviceInstance": [
+				"686013E94B3778DEC8618BAC995E8CC8"
+			],
+			"duration": 0.018507800996303558,
+			"dateTime": "2026.11.19-12.42.34",
+			"entries": [],
+			"warnings": 0,
+			"errors": 0,
+			"artifacts": []
+		},
+		{
+			"testDisplayName": "BackpackStackAndSearch",
+			"fullTestPath": "RuinMates.Inventory.BackpackStackAndSearch",
+			"tags": [],
+			"state": "Success",
+			"deviceInstance": [
+				"686013E94B3778DEC8618BAC995E8CC8"
+			],
+			"duration": 0.019545696675777435,
+			"dateTime": "2026.11.19-12.42.34",
+			"entries": [],
+			"warnings": 0,
+			"errors": 0,
+			"artifacts": []
+		},
+		{
+			"testDisplayName": "BackpackStackBoundaries",
+			"fullTestPath": "RuinMates.Inventory.BackpackStackBoundaries",
+			"tags": [],
+			"state": "Success",
+			"deviceInstance": [
+				"686013E94B3778DEC8618BAC995E8CC8"
+			],
+			"duration": 0.019101902842521667,
+			"dateTime": "2026.11.19-12.42.34",
+			"entries": [],
+			"warnings": 0,
+			"errors": 0,
+			"artifacts": []
+		},
+		{
+			"testDisplayName": "BackpackTryAddLegacyId",
+			"fullTestPath": "RuinMates.Inventory.BackpackTryAddLegacyId",
+			"tags": [],
+			"state": "Success",
+			"deviceInstance": [
+				"686013E94B3778DEC8618BAC995E8CC8"
+			],
+			"duration": 0.01867690309882164,
+			"dateTime": "2026.11.19-12.42.34",
+			"entries": [],
+			"warnings": 0,
+			"errors": 0,
+			"artifacts": []
+		},
+		{
+			"testDisplayName": "ItemUse",
+			"fullTestPath": "RuinMates.Inventory.ItemUse",
+			"tags": [],
+			"state": "Success",
+			"deviceInstance": [
+				"686013E94B3778DEC8618BAC995E8CC8"
+			],
+			"duration": 0.019073799252510071,
+			"dateTime": "2026.11.19-12.42.34",
+			"entries": [],
+			"warnings": 0,
+			"errors": 0,
+			"artifacts": []
+		},
+		{
+			"testDisplayName": "SocketFromWeaponData",
+			"fullTestPath": "RuinMates.Inventory.SocketFromWeaponData",
+			"tags": [],
+			"state": "Success",
+			"deviceInstance": [
+				"686013E94B3778DEC8618BAC995E8CC8"
+			],
+			"duration": 0.019186697900295258,
+			"dateTime": "2026.11.19-12.42.34",
+			"entries": [
+				{
+					"event":
+					{
+						"type": "Warning",
+						"message": "LogSpawn: UWorld::DestroyActor: World has no context! World: RuinMatesInventorySocketFromDataTest, Actor: /Temp/Untitled_19.RuinMatesInventorySocketFromDataTest:PersistentLevel.RuinmatesCharacter_0",
+						"context": "log",
+						"artifact": "00000000000000000000000000000000"
+					},
+					"filename": "",
+					"lineNumber": -1,
+					"timestamp": "2026.11.19-12.42.34"
+				}
+			],
+			"warnings": 1,
+			"errors": 0,
+			"artifacts": []
+		},
+		{
+			"testDisplayName": "SpawnAndEquip",
+			"fullTestPath": "RuinMates.Inventory.SpawnAndEquip",
+			"tags": [],
+			"state": "Success",
+			"deviceInstance": [
+				"686013E94B3778DEC8618BAC995E8CC8"
+			],
+			"duration": 0.018467500805854797,
+			"dateTime": "2026.11.19-12.42.34",
+			"entries": [
+				{
+					"event":
+					{
+						"type": "Warning",
+						"message": "LogSpawn: UWorld::DestroyActor: World has no context! World: RuinMatesInventorySpawnAndEquipTest, Actor: /Temp/Untitled_20.RuinMatesInventorySpawnAndEquipTest:PersistentLevel.RuinmatesCharacter_0",
+						"context": "log",
+						"artifact": "00000000000000000000000000000000"
+					},
+					"filename": "",
+					"lineNumber": -1,
+					"timestamp": "2026.11.19-12.42.34"
+				}
+			],
+			"warnings": 1,
+			"errors": 0,
+			"artifacts": []
+		},
+		{
+			"testDisplayName": "CategoryDisplayMapping",
+			"fullTestPath": "RuinMates.UI.V4.CategoryDisplayMapping",
+			"tags": [],
+			"state": "Success",
+			"deviceInstance": [
+				"686013E94B3778DEC8618BAC995E8CC8"
+			],
+			"duration": 0.016238998621702194,
+			"dateTime": "2026.11.19-12.42.34",
+			"entries": [],
+			"warnings": 0,
+			"errors": 0,
+			"artifacts": []
+		},
+		{
+			"testDisplayName": "CategoryFilterRealItems",
+			"fullTestPath": "RuinMates.UI.V4.CategoryFilterRealItems",
+			"tags": [],
+			"state": "Success",
+			"deviceInstance": [
+				"686013E94B3778DEC8618BAC995E8CC8"
+			],
+			"duration": 0.016377899795770645,
+			"dateTime": "2026.11.19-12.42.34",
+			"entries": [],
+			"warnings": 0,
+			"errors": 0,
+			"artifacts": []
+		},
+		{
+			"testDisplayName": "HiddenPreviewPrivacy",
+			"fullTestPath": "RuinMates.UI.V4.HiddenPreviewPrivacy",
+			"tags": [],
+			"state": "Success",
+			"deviceInstance": [
+				"686013E94B3778DEC8618BAC995E8CC8"
+			],
+			"duration": 0.0159434974193573,
+			"dateTime": "2026.11.19-12.42.34",
+			"entries": [],
+			"warnings": 0,
+			"errors": 0,
+			"artifacts": []
+		},
+		{
+			"testDisplayName": "ImportedArtContract",
+			"fullTestPath": "RuinMates.UI.V4.ImportedArtContract",
+			"tags": [],
+			"state": "Success",
+			"deviceInstance": [
+				"686013E94B3778DEC8618BAC995E8CC8"
+			],
+			"duration": 0.016701899468898773,
+			"dateTime": "2026.11.19-12.42.34",
+			"entries": [],
+			"warnings": 0,
+			"errors": 0,
+			"artifacts": []
+		},
+		{
+			"testDisplayName": "ItemIconReferences",
+			"fullTestPath": "RuinMates.UI.V4.ItemIconReferences",
+			"tags": [],
+			"state": "Success",
+			"deviceInstance": [
+				"686013E94B3778DEC8618BAC995E8CC8"
+			],
+			"duration": 0.017444700002670288,
+			"dateTime": "2026.11.19-12.42.34",
+			"entries": [],
+			"warnings": 0,
+			"errors": 0,
+			"artifacts": []
+		},
+		{
+			"testDisplayName": "MarketTradeState",
+			"fullTestPath": "RuinMates.UI.V4.MarketTradeState",
+			"tags": [],
+			"state": "Success",
+			"deviceInstance": [
+				"686013E94B3778DEC8618BAC995E8CC8"
+			],
+			"duration": 0.016863398253917694,
+			"dateTime": "2026.11.19-12.42.34",
+			"entries": [],
+			"warnings": 0,
+			"errors": 0,
+			"artifacts": []
+		},
+		{
+			"testDisplayName": "WeaponHudIcon",
+			"fullTestPath": "RuinMates.UI.V4.WeaponHudIcon",
+			"tags": [],
+			"state": "Success",
+			"deviceInstance": [
+				"686013E94B3778DEC8618BAC995E8CC8"
+			],
+			"duration": 0.018021799623966217,
+			"dateTime": "2026.11.19-12.42.34",
+			"entries": [],
+			"warnings": 0,
+			"errors": 0,
+			"artifacts": []
+		}
+	]
+}
