@@ -21,6 +21,8 @@ class ARuinmatesCharacter;
 class ARuinmatesGameState;
 class URuinmatesTerminalItemSlot;
 class ARuinmatesLootContainer;
+class URuinmatesCharacterPreview;
+class URuinmatesSquadRadio;
 
 // Shared terminal. The left backpack stays put; the right switcher shows the character or a container.
 // Layout: world dim -> metal device shell (9-slice) -> header -> tab bar -> body (backpack | right)
@@ -33,15 +35,32 @@ class RUINMATES_API URuinmatesTerminalScreen : public UUserWidget
 public:
 	void OpenFor(ARuinmatesCharacter* InCharacter, ARuinmatesLootContainer* InContainer);
 	void ShowPreview(bool bSearchPage);
+	/** Opens an isolated V4 visual page: inventory, search, storage, market, components. */
+	void ShowVisualPreview(int32 Mode, int32 PreviewCapacity = 20);
 
 protected:
 	virtual void NativeOnInitialized() override;
+	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
 	virtual bool NativeSupportsKeyboardFocus() const override { return true; }
 	virtual FReply NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
+	virtual FReply NativeOnPreviewKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 
 	void BuildChrome();
+	void BuildV4Chrome();
+	void SetVisualMode(int32 Mode);
+	void RefreshVisualPage();
+	UFUNCTION() void PreviewInventory();
+	UFUNCTION() void PreviewSearch();
+	UFUNCTION() void PreviewStorage();
+	UFUNCTION() void PreviewMarket();
+	UFUNCTION() void PreviewComponents();
+	UFUNCTION() void PreviewBuy();
+	UFUNCTION() void PreviewSell();
+	UFUNCTION() void PreviewQuantityUp();
+	UFUNCTION() void PreviewQuantityDown();
+	UFUNCTION() void PreviewMarketSelected(int32 Index);
 	void BuildHeader(UVerticalBox* Column);
 	void BuildTabs(UVerticalBox* Column);
 	void BuildBody(UVerticalBox* Column);
@@ -80,6 +99,11 @@ protected:
 	UFUNCTION()
 	void SelectQuest();
 
+	UFUNCTION() void SelectAmmo();
+	UFUNCTION() void SelectValuable();
+	UFUNCTION() void SelectWeapon();
+	UFUNCTION() void SelectEquipment();
+
 	UFUNCTION()
 	void HandleSlotClicked(int32 StableIndex);
 
@@ -114,6 +138,12 @@ protected:
 	int32 SelectedStableIndex = INDEX_NONE;
 	bool bLive = false;
 	bool bClosing = false;
+	/** Local overlays temporarily hidden while this terminal owns the screen. */
+	TMap<TWeakObjectPtr<UUserWidget>, ESlateVisibility> HiddenOverlays;
+	/** Preview navigation states share the same independent glow as category tabs. */
+	UPROPERTY() TArray<TObjectPtr<class URuinmatesTechButton>> VisualTabs;
+	UPROPERTY() TObjectPtr<class URuinmatesTechButton> VisualBuy;
+	UPROPERTY() TObjectPtr<class URuinmatesTechButton> VisualSell;
 
 	TWeakObjectPtr<ARuinmatesCharacter> LiveCharacter;
 	TWeakObjectPtr<ARuinmatesLootContainer> LiveContainer;
@@ -249,4 +279,26 @@ protected:
 
 	// Stable backpack index the open menu points at; INDEX_NONE means the menu is closed.
 	int32 MenuStableIndex = INDEX_NONE;
+
+	/** V4 keeps one 1920x1080 logical canvas, fitted after the viewport's DPI transform. */
+	UPROPERTY() TObjectPtr<UCanvasPanel> DesignCanvas;
+	UPROPERTY() TObjectPtr<UWidget> PreviewNavigation;
+	UPROPERTY() TObjectPtr<UTextBlock> PreviewBadge;
+	UPROPERTY() TObjectPtr<UUniformGridPanel> MarketGrid;
+	UPROPERTY() TArray<TObjectPtr<URuinmatesTerminalItemSlot>> MarketCells;
+	UPROPERTY() TObjectPtr<UTextBlock> MarketName;
+	UPROPERTY() TObjectPtr<UTextBlock> MarketPrice;
+	UPROPERTY() TObjectPtr<UTextBlock> MarketQuantity;
+	UPROPERTY() TObjectPtr<UTextBlock> MarketTotal;
+	UPROPERTY() TObjectPtr<UWidget> MarketGoods;
+	UPROPERTY() TObjectPtr<UTextBlock> SellPrompt;
+	UPROPERTY() TObjectPtr<UTextBlock> CategoryEmptyHint;
+	UPROPERTY() TObjectPtr<URuinmatesCharacterPreview> CharacterPreview;
+	UPROPERTY() TObjectPtr<URuinmatesSquadRadio> SquadRadio;
+	int32 VisualMode = 0;
+	int32 VisualQuantity = 1;
+	int32 VisualSelected = INDEX_NONE;
+	bool bVisualSell = false;
+	float PageFadeTime = 1.f;
+	float FilterFadeTime = 1.f;
 };

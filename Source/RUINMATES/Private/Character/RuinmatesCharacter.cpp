@@ -29,6 +29,7 @@
 #include "Game/RuinmatesGameState.h"
 #include "UI/RuinmatesTradeScreen.h"
 #include "UI/RuinmatesCrosshairWidget.h"
+#include "UI/RuinmatesFieldHUD.h"
 #include "UI/RuinmatesTerminalScreen.h"
 #include "Engine/World.h"
 #include "CollisionQueryParams.h"
@@ -107,6 +108,14 @@ void ARuinmatesCharacter::BeginPlay()
 	}
 	BindEquippedWeapon(nullptr);
 	EnsureCrosshair();
+}
+
+void ARuinmatesCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	if (InventoryScreen) InventoryScreen->RemoveFromParent();
+	if (FieldHUD) FieldHUD->RemoveFromParent();
+	if (CrosshairWidget) CrosshairWidget->RemoveFromParent();
+	Super::EndPlay(EndPlayReason);
 }
 
 void ARuinmatesCharacter::Tick(float DeltaSeconds)
@@ -606,6 +615,8 @@ void ARuinmatesCharacter::EnsureCrosshair()
 	}
 
 	CrosshairWidget->AddToViewport(20);
+	FieldHUD = CreateWidget<URuinmatesFieldHUD>(PlayerController, URuinmatesFieldHUD::StaticClass());
+	if (FieldHUD) FieldHUD->AddToViewport(10);
 	if (UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(CrosshairWidget->Slot))
 	{
 		CanvasSlot->SetAnchors(FAnchors(0.f, 0.f, 1.f, 1.f));
@@ -622,7 +633,8 @@ void ARuinmatesCharacter::UpdateCrosshairVisibility()
 	{
 		return;
 	}
-	CrosshairWidget->SetVisibility(bWantsToAim ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+	const bool bTerminalOpen = IsValid(InventoryScreen) && InventoryScreen->IsInViewport();
+	CrosshairWidget->SetVisibility(bWantsToAim && !bTerminalOpen ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 }
 
 void ARuinmatesCharacter::BindAimInput(UInputComponent* PlayerInputComponent)
@@ -869,8 +881,8 @@ void ARuinmatesCharacter::OpenInventoryScreen()
 		InventoryScreen->AddToViewport(30);
 	}
 	InventoryScreen->OpenFor(this, ActiveSearch);
-	FInputModeGameAndUI InputMode;
-	InputMode.SetHideCursorDuringCapture(false);
+	StopAim();
+	FInputModeUIOnly InputMode;
 	InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
 	InputMode.SetWidgetToFocus(InventoryScreen->TakeWidget());
 	PlayerController->SetInputMode(InputMode);
@@ -929,6 +941,23 @@ void ARuinmatesCharacter::RequestDiscard(int32 SlotIndex)
 	}
 }
 
+void ARuinmatesCharacter::RequestMoveBackpackSlot(int32 SourceIndex, int32 TargetIndex, FName ExpectedSourceItemId,
+	ERuinmatesItemQuality ExpectedSourceQuality, int32 ExpectedSourceCount,
+	FName ExpectedTargetItemId, ERuinmatesItemQuality ExpectedTargetQuality,
+	int32 ExpectedTargetCount, uint32 ExpectedRevision)
+{
+	if (HasAuthority())
+	{
+		Server_MoveBackpackSlot_Implementation(SourceIndex, TargetIndex, ExpectedSourceItemId, ExpectedSourceQuality,
+			ExpectedSourceCount, ExpectedTargetItemId, ExpectedTargetQuality, ExpectedTargetCount, ExpectedRevision);
+	}
+	else
+	{
+		Server_MoveBackpackSlot(SourceIndex, TargetIndex, ExpectedSourceItemId, ExpectedSourceQuality,
+			ExpectedSourceCount, ExpectedTargetItemId, ExpectedTargetQuality, ExpectedTargetCount, ExpectedRevision);
+	}
+}
+
 void ARuinmatesCharacter::Server_PickupLoot_Implementation(int32 SlotIndex)
 {
 	if (!IsValid(ActiveSearch))
@@ -952,6 +981,18 @@ void ARuinmatesCharacter::Server_DiscardBackpackSlot_Implementation(int32 SlotIn
 	if (Backpack)
 	{
 		Backpack->DiscardSlot(SlotIndex);
+	}
+}
+
+void ARuinmatesCharacter::Server_MoveBackpackSlot_Implementation(int32 SourceIndex, int32 TargetIndex, FName ExpectedSourceItemId,
+	ERuinmatesItemQuality ExpectedSourceQuality, int32 ExpectedSourceCount,
+	FName ExpectedTargetItemId, ERuinmatesItemQuality ExpectedTargetQuality,
+	int32 ExpectedTargetCount, uint32 ExpectedRevision)
+{
+	if (IsValid(Backpack))
+	{
+		Backpack->TryMoveSlot(SourceIndex, TargetIndex, ExpectedSourceItemId, ExpectedSourceQuality,
+			ExpectedSourceCount, ExpectedTargetItemId, ExpectedTargetQuality, ExpectedTargetCount, ExpectedRevision);
 	}
 }
 
@@ -1171,7 +1212,12 @@ void ARuinmatesCharacter::Server_SellItem_Implementation(int32 SlotIndex, int32 
 		return;
 	}
 
-	const int32 Quantity = FMath::Clamp(Count, 1, Stack.Count);
+	if (Count > Stack.Count)
+	{
+		Client_TradeResult(false, NSLOCTEXT("RuinMates", "TradeBadCount", "数量超过当前堆叠"));
+		return;
+	}
+	const int32 Quantity = Count;
 	const int64 Total64 = static_cast<int64>(FMath::Max(0, Row->SellPrice)) * static_cast<int64>(Quantity);
 	if (Total64 <= 0 || Total64 > MAX_int32)
 	{
@@ -1186,12 +1232,22 @@ void ARuinmatesCharacter::Server_SellItem_Implementation(int32 SlotIndex, int32 
 		return;
 	}
 
+	if (static_cast<int64>(GameState->GetSharedFunds()) + Total64 > MAX_int32)
+	{
+		Client_TradeResult(false, NSLOCTEXT("RuinMates", "TradeFundsLimit", "团队资金已达到上限，无法完成交易"));
+		return;
+	}
+	if (!GameState->AddFunds(static_cast<int32>(Total64)))
+	{
+		Client_TradeResult(false, NSLOCTEXT("RuinMates", "TradeNoWallet", "团队资金不可用"));
+		return;
+	}
 	if (!Backpack->RemoveItemAt(SlotIndex, Quantity))
 	{
+		GameState->TrySpendFunds(static_cast<int32>(Total64));
 		Client_TradeResult(false, NSLOCTEXT("RuinMates", "TradeBadSlot", "格子无效"));
 		return;
 	}
-	GameState->AddFunds(static_cast<int32>(Total64));
 
 	Client_TradeResult(true, FText::Format(
 		NSLOCTEXT("RuinMates", "TradeSold", "出售 {0} ×{1}，获得 {2}"),

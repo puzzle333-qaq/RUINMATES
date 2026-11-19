@@ -1,8 +1,10 @@
 #include "UI/RuinmatesTerminalItemSlot.h"
 
 #include "Blueprint/WidgetTree.h"
+#include "Character/RuinmatesCharacter.h"
 #include "Components/Button.h"
 #include "Components/ButtonSlot.h"
+#include "Components/Border.h"
 #include "Components/HorizontalBox.h"
 #include "Components/HorizontalBoxSlot.h"
 #include "Components/Image.h"
@@ -10,8 +12,10 @@
 #include "Components/OverlaySlot.h"
 #include "Components/ProgressBar.h"
 #include "Components/SizeBox.h"
+#include "Components/ScaleBox.h"
 #include "Components/TextBlock.h"
 #include "InputCoreTypes.h"
+#include "Inventory/RuinmatesBackpackComponent.h"
 #include "UI/RuinmatesUIStyle.h"
 
 namespace
@@ -108,8 +112,11 @@ void URuinmatesTerminalItemSlot::BuildTree()
 
 	IconBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("IconBox"));
 	ItemIcon = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("ItemIcon"));
-	IconBox->SetContent(ItemIcon);
-	AddLayer(Layer, IconBox, HAlign_Center, VAlign_Center);
+	UScaleBox* IconFit = WidgetTree->ConstructWidget<UScaleBox>();
+	IconFit->SetStretch(EStretch::ScaleToFit);
+	IconFit->SetContent(ItemIcon);
+	IconBox->SetContent(IconFit);
+	AddLayer(Layer, IconBox, HAlign_Center, VAlign_Top);
 
 	UnknownBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("UnknownBox"));
 	UnknownIcon = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("UnknownIcon"));
@@ -166,8 +173,11 @@ void URuinmatesTerminalItemSlot::BuildTree()
 	AddLayer(Layer, QualityFrame, HAlign_Fill, VAlign_Fill);
 
 	Selection = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("Selection"));
-	Selection->SetBrush(RuinmatesUI::SlotBrush(TEXT("T_UI_Slot_Selected")));
-	AddLayer(Layer, Selection, HAlign_Fill, VAlign_Fill, FMargin(-3.f));
+	Selection->SetBrush(RuinmatesUI::V4(TEXT("Derived/Slots/T_UI_SlotOverlay_Selected")));
+	AddLayer(Layer, Selection, HAlign_Fill, VAlign_Fill);
+	FinishPips = WidgetTree->ConstructWidget<UImage>();
+	RuinmatesUI::SetImageSize(FinishPips, FVector2D(40, 6));
+	AddLayer(Layer, FinishPips, HAlign_Left, VAlign_Bottom, FMargin(10, 0, 0, 2));
 }
 
 void URuinmatesTerminalItemSlot::Configure(const FVector2D& InSize, ERuinmatesTerminalSlotLayout InLayout)
@@ -197,16 +207,15 @@ void URuinmatesTerminalItemSlot::RefreshLayoutMetrics()
 	const bool bCard = Layout == ERuinmatesTerminalSlotLayout::Card;
 	// Icon takes ~60% of the short side; on cards it sits above the name block.
 	const float Short = FMath::Min(CellSize.X, CellSize.Y);
-	const float IconSize = FMath::RoundToFloat(Short * (bCard ? 0.66f : 0.60f));
-	IconBox->SetWidthOverride(IconSize);
-	IconBox->SetHeightOverride(IconSize);
+	IconBox->SetWidthOverride(CellSize.X - 60.f);
+	IconBox->SetHeightOverride(CellSize.Y - 40.f);
 	UnknownBox->SetWidthOverride(Short * 0.40f);
 	UnknownBox->SetHeightOverride(Short * 0.40f);
 
 	const float Pad = FMath::Clamp(Short * 0.07f, 8.f, 14.f);
 	if (UOverlaySlot* IconSlot = Cast<UOverlaySlot>(IconBox->Slot))
 	{
-		IconSlot->SetPadding(FMargin(0.f, 0.f, 0.f, bCard ? CellSize.Y * 0.20f : Short * 0.16f));
+		IconSlot->SetPadding(FMargin(0.f, 12.f, 0.f, 0.f));
 	}
 	if (UOverlaySlot* UnknownSlot = Cast<UOverlaySlot>(UnknownBox->Slot))
 	{
@@ -214,11 +223,11 @@ void URuinmatesTerminalItemSlot::RefreshLayoutMetrics()
 	}
 	if (UOverlaySlot* NameSlot = Cast<UOverlaySlot>(NameText->Slot))
 	{
-		NameSlot->SetPadding(FMargin(Pad, 0.f, Pad, bCard ? Pad + 18.f : Pad + 2.f));
+		NameSlot->SetPadding(FMargin(10.f, 0.f, 10.f, 8.f));
 	}
 	if (UOverlaySlot* CountSlot = Cast<UOverlaySlot>(CountText->Slot))
 	{
-		CountSlot->SetPadding(FMargin(0.f, Pad - 2.f, Pad, 0.f));
+		CountSlot->SetPadding(FMargin(0.f, 6.f, 8.f, 0.f));
 	}
 	if (UOverlaySlot* PipSlot = Cast<UOverlaySlot>(RarityPips->Slot))
 	{
@@ -236,11 +245,11 @@ void URuinmatesTerminalItemSlot::RefreshLayoutMetrics()
 		}
 	}
 
-	NameText->SetFont(bCard ? RuinmatesUI::FontBold(20) : RuinmatesUI::Font(18));
-	CountText->SetFont(RuinmatesUI::FontBold(bCard ? 20 : 18));
-	StatusText->SetFont(RuinmatesUI::Font(16));
+	NameText->SetFont(RuinmatesUI::Font(16));
+	CountText->SetFont(RuinmatesUI::Font(16));
+	StatusText->SetFont(RuinmatesUI::Font(14));
 	RuinmatesUI::SetImageSize(NameStrip, FVector2D(32.f, bCard ? 76.f : 52.f));
-	NameText->SetJustification(bCard ? ETextJustify::Left : ETextJustify::Center);
+	NameText->SetJustification(ETextJustify::Left);
 }
 
 void URuinmatesTerminalItemSlot::ApplyView(const FRuinmatesTerminalSlotView& InView)
@@ -259,6 +268,17 @@ void URuinmatesTerminalItemSlot::ApplyView(const FRuinmatesTerminalSlotView& InV
 	RefreshVisual();
 }
 
+void URuinmatesTerminalItemSlot::SetBackpackDragEnabled(bool bEnabled)
+{
+	bBackpackDragEnabled = bEnabled;
+}
+
+void URuinmatesTerminalItemSlot::SetDragging(bool bDragging)
+{
+	bIsDragging = bDragging;
+	RefreshVisual();
+}
+
 void URuinmatesTerminalItemSlot::ApplyPlateStyle()
 {
 	if (!HitButton)
@@ -274,49 +294,24 @@ void URuinmatesTerminalItemSlot::ApplyPlateStyle()
 	case ERuinmatesTerminalSlotState::Taken: Plate = EPlate::Disabled; break;
 	default: Plate = View.bDimmed ? EPlate::Disabled : EPlate::Filled; break;
 	}
-	if (AppliedPlate == static_cast<int32>(Plate))
+	const int32 FinishKey = static_cast<int32>(Plate) * 10 + static_cast<int32>(View.Quality);
+	if (AppliedPlate == FinishKey)
 	{
 		return;
 	}
-	AppliedPlate = static_cast<int32>(Plate);
+	AppliedPlate = FinishKey;
 
-	const FSlateBrush Hover = RuinmatesUI::SlotBrush(TEXT("T_UI_Slot_Hover"));
-	const FSlateBrush Pressed = RuinmatesUI::SlotBrush(TEXT("T_UI_Slot_Pressed"));
-	FButtonStyle Style;
-	Style.NormalPadding = FMargin(0.f);
-	Style.PressedPadding = FMargin(0.f);
-	switch (Plate)
-	{
-	case EPlate::Empty:
-		Style.Normal = RuinmatesUI::SlotBrush(TEXT("T_UI_Slot_Empty"));
-		// Empty cells only brighten slightly on hover; there is nothing to press.
-		Style.Hovered = RuinmatesUI::SlotBrush(TEXT("T_UI_Slot_Empty"), FLinearColor(1.25f, 1.3f, 1.35f, 1.f));
-		Style.Pressed = Style.Hovered;
-		break;
-	case EPlate::Unknown:
-		Style.Normal = RuinmatesUI::SlotBrush(TEXT("T_UI_Slot_Unknown"));
-		Style.Hovered = Style.Normal;
-		Style.Pressed = Style.Normal;
-		break;
-	case EPlate::Searching:
-		Style.Normal = RuinmatesUI::SlotBrush(TEXT("T_UI_Slot_Searching"));
-		Style.Hovered = Style.Normal;
-		Style.Pressed = Style.Normal;
-		break;
-	case EPlate::Disabled:
-		Style.Normal = RuinmatesUI::SlotBrush(TEXT("T_UI_Slot_Empty"), FLinearColor(0.6f, 0.6f, 0.65f, 0.7f));
-		Style.Hovered = Style.Normal;
-		Style.Pressed = Style.Normal;
-		break;
-	case EPlate::Filled:
-	default:
-		Style.Normal = RuinmatesUI::SlotBrush(TEXT("T_UI_Slot_Filled"));
-		Style.Hovered = Hover;
-		Style.Pressed = Pressed;
-		break;
-	}
-	Style.Disabled = Style.Normal;
-	HitButton->SetStyle(Style);
+	const bool bKnown = View.State == ERuinmatesTerminalSlotState::Revealed || View.State == ERuinmatesTerminalSlotState::Pending;
+	const FString Name = bKnown ? FString::Printf(TEXT("Derived/Slots/T_UI_Slot_%s"),
+		RuinmatesUI::QualityFinish(static_cast<uint8>(View.Quality))) : TEXT("Derived/Slots/T_UI_Slot_Empty");
+	FButtonStyle V4Style;
+	V4Style.Normal = RuinmatesUI::V4(*Name);
+	V4Style.Hovered = V4Style.Normal;
+	V4Style.Pressed = V4Style.Normal;
+	V4Style.Disabled = V4Style.Normal;
+	V4Style.NormalPadding = FMargin(0.f);
+	V4Style.PressedPadding = FMargin(0.f);
+	HitButton->SetStyle(V4Style);
 }
 
 void URuinmatesTerminalItemSlot::RefreshVisual()
@@ -338,26 +333,26 @@ void URuinmatesTerminalItemSlot::RefreshVisual()
 
 	ApplyPlateStyle();
 	// Pending (request in flight), taken and filtered cells cannot be clicked again.
-	HitButton->SetIsEnabled(!(State == ERuinmatesTerminalSlotState::Pending || bTaken || View.bDimmed));
+	HitButton->SetIsEnabled(!(State == ERuinmatesTerminalSlotState::Pending || bTaken || View.bDimmed || bIsDragging));
 
 	// Quality: low-alpha gradient that peaks in a thin bottom line, plus a tinted frame.
-	Show(QualityGlow, bKnown);
+	Show(QualityGlow, false);
 	QualityGlow->SetColorAndOpacity(RuinmatesUI::WithAlpha(Quality, (bHovered ? 0.55f : 0.42f) * Dim));
-	Show(QualityFrame, bKnown);
+	Show(QualityFrame, false);
 	const float FrameAlpha = (bHovered ? 0.95f : 0.62f) + RevealFlash * 1.2f;
 	QualityFrame->SetColorAndOpacity(RuinmatesUI::WithAlpha(Quality, FMath::Min(1.f, FrameAlpha) * Dim));
 
 	Show(Hatch, bUnknown || bSearching);
 	Hatch->SetColorAndOpacity(FLinearColor(1.f, 1.f, 1.f, bSearching ? 0.9f : 0.6f));
 	Show(ScanBand, bSearching);
-	Show(EmptyMark, bEmpty || bTaken);
+	Show(EmptyMark, false);
 	EmptyMark->SetColorAndOpacity(FLinearColor(1.f, 1.f, 1.f, bTaken ? 0.35f : (bHovered ? 1.f : 0.75f)));
 
 	// Item art.
 	Show(IconBox, bKnown);
 	if (bKnown)
 	{
-		static const FSoftObjectPath Generic(TEXT("/Game/RUINMATES/UI/Textures/Items/T_Item_Generic.T_Item_Generic"));
+		static const FSoftObjectPath Generic(TEXT("/Game/RUINMATES/UI/AssetPackV4/Icons/System/T_Icon_SYS_Inventory.T_Icon_SYS_Inventory"));
 		const FSoftObjectPath& Wanted = View.Icon.IsNull() ? Generic : View.Icon;
 		if (AppliedIcon != Wanted)
 		{
@@ -382,7 +377,7 @@ void URuinmatesTerminalItemSlot::RefreshVisual()
 	}
 
 	// Text.
-	Show(NameStrip, bKnown);
+	Show(NameStrip, false);
 	Show(NameText, bKnown);
 	Show(CountText, bKnown && View.Count > 1);
 	if (bKnown)
@@ -394,7 +389,7 @@ void URuinmatesTerminalItemSlot::RefreshVisual()
 	}
 
 	// Rarity pips: one per quality step, so rarity reads without relying on colour alone.
-	Show(RarityPips, bKnown && !View.bDimmed);
+	Show(RarityPips, false);
 	const int32 PipCount = static_cast<int32>(View.Quality) + 1;
 	for (int32 Index = 0; Index < RarityPips->GetChildrenCount(); ++Index)
 	{
@@ -426,10 +421,31 @@ void URuinmatesTerminalItemSlot::RefreshVisual()
 	Show(ScanBar ? ScanBar->GetParent() : nullptr, bSearching);
 	Show(ScanBar, bSearching);
 
-	Show(Selection, bKnown && View.bSelected && !View.bDimmed);
+	Show(Selection, bKnown && (View.bSelected || bHovered || View.bDropTarget) && !View.bDimmed);
+	if (View.bDropTarget)
+	{
+		Selection->SetBrush(RuinmatesUI::V4(View.bDropAllowed
+			? TEXT("Derived/Slots/T_UI_SlotOverlay_DropValid")
+			: TEXT("Derived/Slots/T_UI_SlotOverlay_DropInvalid")));
+		Selection->SetRenderOpacity(1.f);
+	}
+	else
+	{
+		Selection->SetBrush(RuinmatesUI::V4(View.bSelected
+			? TEXT("Derived/Slots/T_UI_SlotOverlay_Selected")
+			: TEXT("Derived/Slots/T_UI_SlotOverlay_Hover")));
+		Selection->SetRenderOpacity(View.bSelected ? 1.f : 0.45f);
+	}
+	Show(FinishPips, bKnown && !View.bDimmed);
+	if (bKnown)
+	{
+		FinishPips->SetBrush(RuinmatesUI::V4(*FString::Printf(TEXT("Art/Slots/T_UI_QualityPips_%s"),
+			RuinmatesUI::QualityFinish(static_cast<uint8>(View.Quality)))));
+		RuinmatesUI::SetImageSize(FinishPips, FVector2D(40, 6));
+	}
 
 	// Tooltip with the details that do not fit on the cell. Hidden items never leak content.
-	if (bKnown && !View.bDimmed)
+	if (bKnown && !View.bDimmed && !bIsDragging)
 	{
 		FText Tip = FText::Format(NSLOCTEXT("RuinMatesUI", "SlotTooltip", "{0}\n品质：{1}    数量：{2}"),
 			View.Name, QualityLine(View), FText::AsNumber(View.Count));
@@ -441,11 +457,27 @@ void URuinmatesTerminalItemSlot::RefreshVisual()
 		{
 			Tip = FText::Format(NSLOCTEXT("RuinMatesUI", "SlotTooltipDesc", "{0}\n{1}"), Tip, View.Description);
 		}
-		SetToolTipText(Tip);
+		if (!DetailTooltip)
+		{
+			DetailTooltip = WidgetTree->ConstructWidget<USizeBox>();
+			DetailTooltip->SetWidthOverride(320.f);
+			UBorder* Panel = WidgetTree->ConstructWidget<UBorder>();
+			Panel->SetBrush(RuinmatesUI::PanelBrush());
+			Panel->SetPadding(FMargin(16.f));
+			DetailText = WidgetTree->ConstructWidget<UTextBlock>();
+			DetailText->SetFont(RuinmatesUI::Font(16));
+			DetailText->SetColorAndOpacity(RuinmatesUI::TextPrimary());
+			DetailText->SetAutoWrapText(true);
+			Panel->SetContent(DetailText);
+			DetailTooltip->SetContent(Panel);
+			DetailTooltip->SetVisibility(ESlateVisibility::HitTestInvisible);
+		}
+		DetailText->SetText(Tip);
+		SetToolTip(DetailTooltip);
 	}
 	else
 	{
-		SetToolTipText(FText::GetEmpty());
+		SetToolTip(nullptr);
 	}
 }
 
@@ -474,6 +506,11 @@ void URuinmatesTerminalItemSlot::NativeTick(const FGeometry& MyGeometry, float I
 
 FReply URuinmatesTerminalItemSlot::NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
 {
+	if (bBackpackDragEnabled && View.State == ERuinmatesTerminalSlotState::Revealed
+		&& !View.bDimmed && InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
+	{
+		return FReply::Handled().DetectDrag(TakeWidget(), EKeys::LeftMouseButton);
+	}
 	// The button only consumes the left button, so right clicks bubble up to here.
 	if (InMouseEvent.GetEffectingButton() == EKeys::RightMouseButton
 		&& View.State == ERuinmatesTerminalSlotState::Revealed && !View.bDimmed)
@@ -482,6 +519,108 @@ FReply URuinmatesTerminalItemSlot::NativeOnMouseButtonDown(const FGeometry& InGe
 		return FReply::Handled();
 	}
 	return Super::NativeOnMouseButtonDown(InGeometry, InMouseEvent);
+}
+
+void URuinmatesTerminalItemSlot::NativeOnDragDetected(const FGeometry& InGeometry,
+	const FPointerEvent& InMouseEvent, UDragDropOperation*& OutOperation)
+{
+	Super::NativeOnDragDetected(InGeometry, InMouseEvent, OutOperation);
+	ARuinmatesCharacter* Character = Cast<ARuinmatesCharacter>(GetOwningPlayerPawn());
+	URuinmatesBackpackComponent* Backpack = Character ? Character->GetBackpack() : nullptr;
+	if (!bBackpackDragEnabled || !IsValid(Backpack) || !Backpack->GetSlots().IsValidIndex(View.StableIndex))
+	{
+		return;
+	}
+
+	const FRuinmatesItemStack& Stack = Backpack->GetSlots()[View.StableIndex];
+	if (Stack.IsEmpty())
+	{
+		return;
+	}
+
+	URuinmatesBackpackDragOperation* Operation = NewObject<URuinmatesBackpackDragOperation>();
+	Operation->SourceSlot = this;
+	Operation->SourceIndex = View.StableIndex;
+	Operation->SourceItemId = Stack.ItemId;
+	Operation->SourceQuality = Stack.Quality;
+	Operation->SourceCount = Stack.Count;
+	Operation->ExpectedRevision = Backpack->GetRevision();
+	OutOperation = Operation;
+	SetDragging(true);
+}
+
+void URuinmatesTerminalItemSlot::NativeOnDragCancelled(const FDragDropEvent& InDragDropEvent,
+	UDragDropOperation* InOperation)
+{
+	if (URuinmatesBackpackDragOperation* Operation = Cast<URuinmatesBackpackDragOperation>(InOperation))
+	{
+		if (IsValid(Operation->SourceSlot))
+		{
+			Operation->SourceSlot->SetDragging(false);
+		}
+	}
+	Super::NativeOnDragCancelled(InDragDropEvent, InOperation);
+}
+
+void URuinmatesTerminalItemSlot::NativeOnDragEnter(const FGeometry& InGeometry,
+	const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation)
+{
+	Super::NativeOnDragEnter(InGeometry, InDragDropEvent, InOperation);
+	URuinmatesBackpackDragOperation* Operation = Cast<URuinmatesBackpackDragOperation>(InOperation);
+	ARuinmatesCharacter* Character = Cast<ARuinmatesCharacter>(GetOwningPlayerPawn());
+	URuinmatesBackpackComponent* Backpack = Character ? Character->GetBackpack() : nullptr;
+	if (!Operation || !IsValid(Backpack) || !bBackpackDragEnabled || !Backpack->GetSlots().IsValidIndex(View.StableIndex))
+	{
+		return;
+	}
+
+	const FRuinmatesItemStack& Target = Backpack->GetSlots()[View.StableIndex];
+	View.bDropTarget = true;
+	View.bDropAllowed = Backpack->CanMoveSlotSnapshot(Operation->SourceIndex, View.StableIndex,
+		Operation->SourceItemId, Operation->SourceQuality, Operation->SourceCount,
+		Target.IsEmpty() ? NAME_None : Target.ItemId, Target.Quality, Target.IsEmpty() ? 0 : Target.Count,
+		Operation->ExpectedRevision);
+	RefreshVisual();
+}
+
+void URuinmatesTerminalItemSlot::NativeOnDragLeave(const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation)
+{
+	View.bDropTarget = false;
+	View.bDropAllowed = false;
+	RefreshVisual();
+	Super::NativeOnDragLeave(InDragDropEvent, InOperation);
+}
+
+bool URuinmatesTerminalItemSlot::NativeOnDrop(const FGeometry& InGeometry,
+	const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation)
+{
+	URuinmatesBackpackDragOperation* Operation = Cast<URuinmatesBackpackDragOperation>(InOperation);
+	ARuinmatesCharacter* Character = Cast<ARuinmatesCharacter>(GetOwningPlayerPawn());
+	URuinmatesBackpackComponent* Backpack = Character ? Character->GetBackpack() : nullptr;
+	if (!Operation || !IsValid(Backpack) || !bBackpackDragEnabled || !Backpack->GetSlots().IsValidIndex(View.StableIndex))
+	{
+		return Super::NativeOnDrop(InGeometry, InDragDropEvent, InOperation);
+	}
+
+	const FRuinmatesItemStack& Target = Backpack->GetSlots()[View.StableIndex];
+	if (Backpack->CanMoveSlotSnapshot(Operation->SourceIndex, View.StableIndex,
+		Operation->SourceItemId, Operation->SourceQuality, Operation->SourceCount,
+		Target.IsEmpty() ? NAME_None : Target.ItemId, Target.Quality, Target.IsEmpty() ? 0 : Target.Count,
+		Operation->ExpectedRevision))
+	{
+		Character->RequestMoveBackpackSlot(Operation->SourceIndex, View.StableIndex,
+			Operation->SourceItemId, Operation->SourceQuality, Operation->SourceCount,
+			Target.IsEmpty() ? NAME_None : Target.ItemId, Target.Quality, Target.IsEmpty() ? 0 : Target.Count,
+			Operation->ExpectedRevision);
+	}
+	if (IsValid(Operation->SourceSlot))
+	{
+		Operation->SourceSlot->SetDragging(false);
+	}
+	View.bDropTarget = false;
+	View.bDropAllowed = false;
+	RefreshVisual();
+	return true;
 }
 
 void URuinmatesTerminalItemSlot::HandleClicked()

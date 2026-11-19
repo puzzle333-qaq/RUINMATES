@@ -32,6 +32,9 @@ struct FRuinmatesTerminalSlotView
 	int32 StableIndex = INDEX_NONE;
 
 	UPROPERTY()
+	FName ItemId = NAME_None;
+
+	UPROPERTY()
 	FText Name;
 
 	UPROPERTY()
@@ -59,9 +62,15 @@ struct FRuinmatesTerminalSlotView
 	UPROPERTY()
 	int32 UnitValue = 0;
 
-	/** Hidden by the active category filter: drawn dimmed and not clickable, index unchanged. */
+	/** Legacy dimming flag; active category filtering now omits non-matching cells. */
 	UPROPERTY()
 	bool bDimmed = false;
+
+	UPROPERTY()
+	bool bDropTarget = false;
+
+	UPROPERTY()
+	bool bDropAllowed = false;
 };
 
 struct FRuinmatesTerminalPreviewPage
@@ -91,4 +100,10 @@ namespace RuinmatesTerminalPreview
 {
 	RUINMATES_API FRuinmatesTerminalPreviewPage MakeInventoryPage();
 	RUINMATES_API FRuinmatesTerminalPreviewPage MakeSearchPage();
+}
+
+namespace RuinmatesTerminalDisplay
+{
+	RUINMATES_API TArray<FRuinmatesTerminalSlotView> FilterBackpackSlots(
+		const TArray<FRuinmatesTerminalSlotView>& Slots, FName Category);
 }

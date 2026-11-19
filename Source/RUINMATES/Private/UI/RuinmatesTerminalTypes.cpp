@@ -26,7 +26,7 @@ namespace
 	// Preview-only art lookup. Live pages read FRuinmatesItemRow::Icon instead.
 	FSoftObjectPath PreviewIcon(const TCHAR* Name)
 	{
-		return FSoftObjectPath(FString::Printf(TEXT("/Game/RUINMATES/UI/Textures/Items/%s.%s"), Name, Name));
+		return FSoftObjectPath(FString::Printf(TEXT("/Game/RUINMATES/UI/AssetPackV4/Derived/Icons/%s.%s"), Name, Name));
 	}
 
 	void PadTo(TArray<FRuinmatesTerminalSlotView>& Slots, int32 Capacity)
@@ -38,28 +38,57 @@ namespace
 	}
 }
 
+TArray<FRuinmatesTerminalSlotView> RuinmatesTerminalDisplay::FilterBackpackSlots(
+	const TArray<FRuinmatesTerminalSlotView>& Slots, FName Category)
+{
+	if (Category.IsNone())
+	{
+		return Slots;
+	}
+
+	TArray<FRuinmatesTerminalSlotView> Filtered;
+	for (const FRuinmatesTerminalSlotView& Slot : Slots)
+	{
+		if (Slot.State == ERuinmatesTerminalSlotState::Revealed && Slot.Category == Category)
+		{
+			Filtered.Add(Slot);
+		}
+	}
+	return Filtered;
+}
+
 FRuinmatesTerminalPreviewPage RuinmatesTerminalPreview::MakeInventoryPage()
 {
 	FRuinmatesTerminalPreviewPage Page;
 	Page.PageTitle = NSLOCTEXT("RuinMatesUI", "PageInventory", "背包");
 	Page.PackTitle = NSLOCTEXT("RuinMatesUI", "PackPreview", "探索背包");
 	Page.Capacity = 20;
-	Page.Backpack = {
-		Item(0, NSLOCTEXT("RuinMatesUI", "Ammo", "弹药"), 12, ERuinmatesItemQuality::Common, TEXT("Material")),
-		Item(1, NSLOCTEXT("RuinMatesUI", "Meds", "药品"), 4, ERuinmatesItemQuality::Fine, TEXT("Consumable")),
-		Item(2, NSLOCTEXT("RuinMatesUI", "Chip", "实验基因芯片"), 1, ERuinmatesItemQuality::Rare, TEXT("Material")),
-		Item(3, NSLOCTEXT("RuinMatesUI", "Sample", "样本"), 1, ERuinmatesItemQuality::Advanced, TEXT("Quest")),
-		Item(4, NSLOCTEXT("RuinMatesUI", "Battery", "电池"), 2, ERuinmatesItemQuality::Fine, TEXT("Material")),
-		Item(5, NSLOCTEXT("RuinMatesUI", "Gold", "金条"), 1, ERuinmatesItemQuality::Precious, TEXT("Material")),
-		Item(6, NSLOCTEXT("RuinMatesUI", "Bandage", "绷带"), 6, ERuinmatesItemQuality::Common, TEXT("Consumable"))
+	// Isolated art samples. These names, values and counts never enter DT_Items or an inventory.
+	const TCHAR* Names[] = {
+		TEXT("野外工具包"), TEXT("弹药箱"), TEXT("绳索"), TEXT("5.56mm 弹药"), TEXT("9mm 弹药"),
+		TEXT("医疗包"), TEXT("急救药瓶"), TEXT("止痛药"), TEXT("绷带"), TEXT("兴奋剂"),
+		TEXT("烟雾弹"), TEXT("破片手雷"), TEXT("无人机信标"), TEXT("撤离信号棒"), TEXT("四倍镜"),
+		TEXT("消音器"), TEXT("前握把"), TEXT("激光模块")
 	};
-	const TCHAR* Icons[] = { TEXT("T_Item_AmmoBox"), TEXT("T_Item_Cans"), TEXT("T_Item_Circuit"), TEXT("T_Item_Gland"),
-		TEXT("T_Item_Generic"), TEXT("T_Item_Core"), TEXT("T_Item_Bandage") };
+	const TCHAR* Icons[] = {
+		TEXT("T_Icon_FieldKit"), TEXT("T_Icon_AmmoCase"), TEXT("T_Icon_Rope"), TEXT("T_Icon_Ammo556"), TEXT("T_Icon_Ammo9mm"),
+		TEXT("T_Icon_MedKit"), TEXT("T_Icon_FirstAid"), TEXT("T_Icon_Painkillers"), TEXT("T_Icon_Bandage"), TEXT("T_Icon_Stimulant"),
+		TEXT("T_Icon_Smoke"), TEXT("T_Icon_FragGrenade"), TEXT("T_Icon_UAVBeacon"), TEXT("T_Icon_ExtractionFlare"), TEXT("T_Icon_Scope4x"),
+		TEXT("T_Icon_Suppressor"), TEXT("T_Icon_Foregrip"), TEXT("T_Icon_LaserModule")
+	};
+	const int32 Counts[] = {1, 1, 1, 120, 45, 2, 4, 3, 5, 1, 2, 3, 1, 1, 1, 1, 1, 1};
+	const ERuinmatesItemQuality Finishes[] = {ERuinmatesItemQuality::Common, ERuinmatesItemQuality::Fine,
+		ERuinmatesItemQuality::Rare, ERuinmatesItemQuality::Precious};
+	for (int32 Index = 0; Index < UE_ARRAY_COUNT(Names); ++Index)
+	{
+		Page.Backpack.Add(Item(Index, FText::FromString(Names[Index]), Counts[Index], Finishes[Index % 4],
+			Index >= 5 && Index <= 11 ? TEXT("Consumable") : TEXT("Material")));
+	}
 	for (int32 Index = 0; Index < Page.Backpack.Num() && Index < UE_ARRAY_COUNT(Icons); ++Index)
 	{
 		Page.Backpack[Index].Icon = PreviewIcon(Icons[Index]);
 	}
-	Page.Used = 7;
+	Page.Used = Page.Backpack.Num();
 	Page.Funds = 9863;
 	Page.BackpackTierName = NSLOCTEXT("RuinMatesUI", "PackTactical", "高级战术背包");
 	Page.LootValue = 16800;
@@ -77,10 +106,6 @@ FRuinmatesTerminalPreviewPage RuinmatesTerminalPreview::MakeSearchPage()
 	FRuinmatesTerminalPreviewPage Page = MakeInventoryPage();
 	Page.PageTitle = NSLOCTEXT("RuinMatesUI", "PageSearch", "物资回收");
 	Page.PackTitle = NSLOCTEXT("RuinMatesUI", "MyPack", "我的背包");
-	Page.Used = 8;
-	Page.LootValue = 3680;
-	Page.Backpack[7] = Item(7, NSLOCTEXT("RuinMatesUI", "Watch", "金表"), 1, ERuinmatesItemQuality::Rare, TEXT("Material"));
-	Page.Backpack[7].Icon = PreviewIcon(TEXT("T_Item_Generic"));
 	Page.bRightIsContainer = true;
 	Page.RightTitle = NSLOCTEXT("RuinMatesUI", "Crate", "废弃研究所储物箱");
 	Page.RightSubtitle = NSLOCTEXT("RuinMatesUI", "SearchCount", "3 / 6");
@@ -90,9 +115,12 @@ FRuinmatesTerminalPreviewPage RuinmatesTerminalPreview::MakeSearchPage()
 		Item(1, NSLOCTEXT("RuinMatesUI", "Meds2", "药品"), 2, ERuinmatesItemQuality::Fine, TEXT("Consumable")),
 		Item(2, NSLOCTEXT("RuinMatesUI", "Gold2", "金条"), 1, ERuinmatesItemQuality::Precious, TEXT("Material"))
 	};
-	Page.RightSlots[0].Icon = PreviewIcon(TEXT("T_Item_Circuit"));
-	Page.RightSlots[1].Icon = PreviewIcon(TEXT("T_Item_Bandage"));
-	Page.RightSlots[2].Icon = PreviewIcon(TEXT("T_Item_Core"));
+	Page.RightSlots[0].Name = NSLOCTEXT("RuinMatesUI", "RopePreview", "绳索");
+	Page.RightSlots[0].Icon = PreviewIcon(TEXT("T_Icon_Rope"));
+	Page.RightSlots[1].Name = NSLOCTEXT("RuinMatesUI", "MedicalPreview", "绷带");
+	Page.RightSlots[1].Icon = PreviewIcon(TEXT("T_Icon_Bandage"));
+	Page.RightSlots[2].Name = NSLOCTEXT("RuinMatesUI", "BeaconPreview", "无人机信标");
+	Page.RightSlots[2].Icon = PreviewIcon(TEXT("T_Icon_UAVBeacon"));
 	FRuinmatesTerminalSlotView Scanning = EmptySlot(3);
 	Scanning.State = ERuinmatesTerminalSlotState::Searching;
 	FRuinmatesTerminalSlotView HiddenA = EmptySlot(4);
@@ -102,6 +130,7 @@ FRuinmatesTerminalPreviewPage RuinmatesTerminalPreview::MakeSearchPage()
 	Page.RightSlots.Add(Scanning);
 	Page.RightSlots.Add(HiddenA);
 	Page.RightSlots.Add(HiddenB);
+	PadTo(Page.RightSlots, 12);
 	Page.FooterLeft = NSLOCTEXT("RuinMatesUI", "SearchFooter", "ESC 关闭    点击已发现物品拾取");
 	Page.FooterRight = NSLOCTEXT("RuinMatesUI", "NotPaused", "游戏不暂停");
 

@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+#include "Inventory/RuinmatesItemTypes.h"
 #include "RuinmatesCharacter.generated.h"
 
 class UCameraComponent;
@@ -16,6 +17,7 @@ class ABaseWeapon;
 class UAnimMontage;
 class UInputComponent;
 class URuinmatesCrosshairWidget;
+class URuinmatesFieldHUD;
 class ARuinmatesMerchant;
 class URuinmatesTradeScreen;
 
@@ -31,6 +33,7 @@ public:
 
 	virtual void PostInitializeComponents() override;
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void Tick(float DeltaSeconds) override;
 	virtual void PossessedBy(AController* NewController) override;
 	virtual void PawnClientRestart() override;
@@ -87,6 +90,10 @@ public:
 	void RequestPickup(int32 SlotIndex);
 	void RequestTakeAllLoot();
 	void RequestDiscard(int32 SlotIndex);
+	void RequestMoveBackpackSlot(int32 SourceIndex, int32 TargetIndex, FName ExpectedSourceItemId,
+		ERuinmatesItemQuality ExpectedSourceQuality, int32 ExpectedSourceCount,
+		FName ExpectedTargetItemId, ERuinmatesItemQuality ExpectedTargetQuality,
+		int32 ExpectedTargetCount, uint32 ExpectedRevision);
 
 	UFUNCTION(BlueprintPure, Category = "RuinMates|Weapon")
 	ABaseWeapon* GetEquippedWeapon() const { return EquippedWeapon; }
@@ -215,6 +222,12 @@ protected:
 	UFUNCTION(Server, Reliable)
 	void Server_DiscardBackpackSlot(int32 SlotIndex);
 
+	UFUNCTION(Server, Reliable)
+	void Server_MoveBackpackSlot(int32 SourceIndex, int32 TargetIndex, FName ExpectedSourceItemId,
+		ERuinmatesItemQuality ExpectedSourceQuality, int32 ExpectedSourceCount,
+		FName ExpectedTargetItemId, ERuinmatesItemQuality ExpectedTargetQuality,
+		int32 ExpectedTargetCount, uint32 ExpectedRevision);
+
 	UFUNCTION()
 	void HandleStaminaDepleted();
 
@@ -280,6 +293,10 @@ protected:
 
 	UPROPERTY()
 	TObjectPtr<URuinmatesCrosshairWidget> CrosshairWidget;
+
+	/** Local V4 presentation only; it never owns or mutates replicated gameplay state. */
+	UPROPERTY()
+	TObjectPtr<URuinmatesFieldHUD> FieldHUD;
 
 	UPROPERTY()
 	TObjectPtr<URuinmatesTerminalScreen> InventoryScreen;

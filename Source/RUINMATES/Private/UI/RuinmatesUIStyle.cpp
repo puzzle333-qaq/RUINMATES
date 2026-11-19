@@ -81,6 +81,47 @@ namespace
 	}
 
 	const FMargin ButtonMargin(0.25f, 0.3f, 0.25f, 0.3f);
+
+	struct FV4BrushSpec
+	{
+		float Width;
+		float Height;
+		ESlateBrushDrawType::Type DrawAs;
+		FMargin Margin;
+	};
+
+	const TMap<FString, FV4BrushSpec> V4Manifest = {
+#include "RuinmatesV4Brushes.inl"
+	};
+}
+
+FSlateBrush RuinmatesUI::V4(const TCHAR* RelativePath)
+{
+	const FV4BrushSpec* Spec = V4Manifest.Find(RelativePath);
+	if (!Spec)
+	{
+		return FSlateBrush();
+	}
+	const FString Original(RelativePath);
+	const FString Relative = Spec->DrawAs == ESlateBrushDrawType::Box && Original.StartsWith(TEXT("Art/"))
+		? TEXT("Derived/") + Original : Original;
+	const FString Name = FPaths::GetCleanFilename(Relative);
+	const FString Path = FString::Printf(TEXT("/Game/RUINMATES/UI/AssetPackV4/%s.%s"), *Relative, *Name);
+	FSlateBrush Brush = MakeBrush(LoadCached(Path), Spec->DrawAs, Spec->Margin, FLinearColor::White);
+	Brush.SetImageSize(FVector2D(Spec->Width * 0.5f, Spec->Height * 0.5f));
+	return Brush;
+}
+
+const TCHAR* RuinmatesUI::QualityFinish(uint8 QualityIndex)
+{
+	switch (QualityIndex)
+	{
+	case 1:
+	case 2: return TEXT("Green");
+	case 3: return TEXT("Purple");
+	case 4: return TEXT("Gold");
+	default: return TEXT("White");
+	}
 }
 
 UTexture2D* RuinmatesUI::Texture(const TCHAR* Group, const TCHAR* Name)
@@ -131,22 +172,22 @@ FSlateBrush RuinmatesUI::Tiled(const TCHAR* Group, const TCHAR* Name, const FLin
 
 FSlateBrush RuinmatesUI::PanelBrush()
 {
-	return Box(TEXT("Panels"), TEXT("T_UI_PanelFrame"), FMargin(0.3f), FLinearColor::White);
+	return V4(TEXT("Art/Panels/T_UI_Panel_Large"));
 }
 
 FSlateBrush RuinmatesUI::InsetBrush()
 {
-	return Box(TEXT("Panels"), TEXT("T_UI_PanelInset"), FMargin(28.f / 96.f), FLinearColor::White);
+	return V4(TEXT("Art/Panels/T_UI_Card_Base"));
 }
 
 FSlateBrush RuinmatesUI::ChipBrush()
 {
-	return Box(TEXT("Panels"), TEXT("T_UI_Chip"), FMargin(0.25f, 0.3f, 0.25f, 0.3f), FLinearColor::White);
+	return V4(TEXT("Art/Panels/T_UI_Panel_Small"));
 }
 
 FSlateBrush RuinmatesUI::KeycapBrush()
 {
-	return Box(TEXT("Buttons"), TEXT("T_UI_Keycap"), FMargin(0.3f, 0.3f, 0.3f, 0.35f), FLinearColor::White);
+	return V4(TEXT("Art/Controls/T_UI_KeyHint"));
 }
 
 FSlateBrush RuinmatesUI::SlotBrush(const TCHAR* Name, const FLinearColor& Tint)
@@ -194,8 +235,8 @@ FButtonStyle RuinmatesUI::CloseButtonStyle()
 FProgressBarStyle RuinmatesUI::ProgressStyle()
 {
 	FProgressBarStyle Style;
-	Style.BackgroundImage = Box(TEXT("Progress"), TEXT("T_UI_Progress_Background"), FMargin(0.2f, 0.f, 0.2f, 0.f));
-	Style.FillImage = Box(TEXT("Progress"), TEXT("T_UI_Progress_Fill"), FMargin(0.2f, 0.f, 0.2f, 0.f));
+	Style.BackgroundImage = V4(TEXT("Art/Progress/T_UI_ProgressTrack"));
+	Style.FillImage = V4(TEXT("Art/Progress/T_UI_ProgressFill_White"));
 	Style.MarqueeImage = Style.FillImage;
 	return Style;
 }

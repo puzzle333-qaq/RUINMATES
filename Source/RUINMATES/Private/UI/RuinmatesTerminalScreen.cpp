@@ -2,6 +2,7 @@
 
 #include "Blueprint/WidgetTree.h"
 #include "Blueprint/WidgetLayoutLibrary.h"
+#include "Blueprint/WidgetBlueprintLibrary.h"
 #include "Brushes/SlateColorBrush.h"
 #include "Components/BackgroundBlur.h"
 #include "Components/Border.h"
@@ -41,6 +42,10 @@
 #include "Inventory/RuinmatesLootContainer.h"
 #include "UI/RuinmatesTerminalItemSlot.h"
 #include "UI/RuinmatesUIStyle.h"
+#include "UI/RuinmatesTechButton.h"
+#include "UI/RuinmatesCharacterPreview.h"
+#include "UI/RuinmatesSquadRadio.h"
+#include "UI/RuinmatesFieldHUD.h"
 
 using RuinmatesUI::WithAlpha;
 
@@ -61,6 +66,8 @@ namespace
 	constexpr float FadeDuration = 0.16f;
 	// Ultrawide: the shell never gets wider than this aspect; the rest stays as dimmed world.
 	constexpr float MaxShellAspect = 2.05f;
+	TAutoConsoleVariable<int32> LegacyTerminal(TEXT("Ruinmates.UI.LegacyTerminal"), 0,
+		TEXT("Use the previous terminal appearance for comparison. Reopen the UI after changing."));
 
 	UTextBlock* MakeText(UWidgetTree* Tree, const FName& Name, const FSlateFontInfo& Font, const FLinearColor& Color, const FText& Text = FText::GetEmpty())
 	{
@@ -243,22 +250,13 @@ namespace
 		return Sized(Tree, FName(*(Name.ToString() + TEXT("Size"))), Plate, 148.f, 132.f);
 	}
 
-	/** Maps the static item category onto the four terminal tabs. */
+	/** Uses the data-table enum name as the stable UI filter key. */
 	FName TabCategory(ERuinmatesItemCategory Category)
 	{
-		switch (Category)
-		{
-		case ERuinmatesItemCategory::Consumable:
-		case ERuinmatesItemCategory::Ammo:
-			return TEXT("Consumable");
-		case ERuinmatesItemCategory::Material:
-		case ERuinmatesItemCategory::Valuable:
-			return TEXT("Material");
-		case ERuinmatesItemCategory::Quest:
-			return TEXT("Quest");
-		default:
-			return TEXT("Equipment");
-		}
+		const UEnum* CategoryEnum = StaticEnum<ERuinmatesItemCategory>();
+		return CategoryEnum
+			? FName(*CategoryEnum->GetNameStringByValue(static_cast<int64>(Category)))
+			: NAME_None;
 	}
 
 	/** Display-only lookup of DT_Items: icon, category, description. Never used for authority. */
@@ -269,37 +267,28 @@ namespace
 		View.UnitValue = Stack.UnitValue;
 		if (const URuinmatesItemDatabaseSubsystem* Database = URuinmatesItemDatabaseSubsystem::Get(Context))
 		{
-			const FRuinmatesItemRow* Row = Database->FindItemDefinition(Stack.ItemId);
-			// Legacy LootPool templates (FRuinmatesLootEntry::Item) may carry an ItemId that is not a
-			// DT_Items row. For display only, fall back to matching the row by its display name.
-			if (!Row && !Stack.DisplayName.IsEmpty())
-			{
-				if (const UDataTable* Table = Database->GetTable())
-				{
-					const FString Wanted = Stack.DisplayName.ToString();
-					const FRuinmatesItemRow* Partial = nullptr;
-					Table->ForeachRow<FRuinmatesItemRow>(TEXT("RuinmatesTerminalIcon"),
-						[&Row, &Partial, &Wanted](const FName&, const FRuinmatesItemRow& Candidate)
-						{
-							const FString Name = Candidate.DisplayName.ToString();
-							if (!Row && Name == Wanted)
-							{
-								Row = &Candidate;
-							}
-							else if (!Partial && !Name.IsEmpty() && (Name.StartsWith(Wanted) || Wanted.StartsWith(Name)))
-							{
-								Partial = &Candidate;
-							}
-						});
-					if (!Row)
-					{
-						Row = Partial;
-					}
-				}
-			}
+			const FName ResolvedId = Database->ResolveItemId(Stack.ItemId, Stack.DisplayName);
+			const FRuinmatesItemRow* Row = Database->FindItemDefinition(ResolvedId);
 			if (Row)
 			{
 				View.Icon = Row->Icon.ToSoftObjectPath();
+				if (View.Icon.ToString().Contains(TEXT("/UI/Textures/Items/")))
+				{
+					// The previous procedural icons have no matching V4 art for most loot.
+					// Keep those items identifiable by name and an explicit neutral placeholder.
+					if (Stack.ItemId == TEXT("Bandage"))
+					{
+						View.Icon = FSoftObjectPath(TEXT("/Game/RUINMATES/UI/AssetPackV4/Derived/Icons/T_Icon_Bandage.T_Icon_Bandage"));
+					}
+					else if (Stack.ItemId == TEXT("AmmoBox"))
+					{
+						View.Icon = FSoftObjectPath(TEXT("/Game/RUINMATES/UI/AssetPackV4/Derived/Icons/T_Icon_AmmoCase.T_Icon_AmmoCase"));
+					}
+					else
+					{
+						View.Icon.Reset();
+					}
+				}
 				View.Category = TabCategory(Row->Category);
 				if (View.Description.IsEmpty())
 				{
@@ -316,10 +305,29 @@ void URuinmatesTerminalScreen::NativeOnInitialized()
 	BuildChrome();
 }
 
+void URuinmatesTerminalScreen::NativeConstruct()
+{
+	Super::NativeConstruct();
+	TArray<UUserWidget*> Overlays;
+	UWidgetBlueprintLibrary::GetAllWidgetsOfClass(this, Overlays, URuinmatesFieldHUD::StaticClass(), true);
+	for (UUserWidget* Overlay : Overlays)
+	{
+		if (Overlay->GetOwningPlayer() != GetOwningPlayer()) continue;
+		HiddenOverlays.Add(Overlay, Overlay->GetVisibility());
+		Overlay->SetVisibility(ESlateVisibility::Collapsed);
+	}
+}
+
 void URuinmatesTerminalScreen::NativeDestruct()
 {
 	CloseSlotMenu();
 	UnbindSources();
+	if (CharacterPreview) CharacterPreview->SetCharacter(nullptr);
+	for (const auto& Overlay : HiddenOverlays)
+	{
+		if (Overlay.Key.IsValid()) Overlay.Key->SetVisibility(Overlay.Value);
+	}
+	HiddenOverlays.Empty();
 	Super::NativeDestruct();
 }
 
@@ -336,6 +344,15 @@ FReply URuinmatesTerminalScreen::NativeOnKeyDown(const FGeometry& InGeometry, co
 		return FReply::Handled();
 	}
 	return Super::NativeOnKeyDown(InGeometry, InKeyEvent);
+}
+
+FReply URuinmatesTerminalScreen::NativeOnPreviewKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent)
+{
+	if (InKeyEvent.GetKey() == EKeys::Escape || InKeyEvent.GetKey() == EKeys::Tab)
+	{
+		return NativeOnKeyDown(InGeometry, InKeyEvent);
+	}
+	return Super::NativeOnPreviewKeyDown(InGeometry, InKeyEvent);
 }
 
 void URuinmatesTerminalScreen::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
@@ -357,6 +374,19 @@ void URuinmatesTerminalScreen::NativeTick(const FGeometry& MyGeometry, float InD
 	// Both checks are a float compare per frame; they only do work when the geometry changed.
 	UpdateShellBounds(MyGeometry);
 	UpdateCellSizes(false);
+	if (DesignCanvas && RightSwitcher && PageFadeTime < 0.2f)
+	{
+		PageFadeTime = FMath::Min(0.2f, PageFadeTime + InDeltaTime);
+		const float Alpha = 1.f - FMath::Square(1.f - PageFadeTime / 0.2f);
+		RightSwitcher->SetRenderOpacity(Alpha);
+		RightSwitcher->SetRenderTranslation(FVector2D(4.f * (1.f - Alpha), 0.f));
+	}
+	if (BackpackGrid && FilterFadeTime < 0.12f)
+	{
+		FilterFadeTime = FMath::Min(0.12f, FilterFadeTime + InDeltaTime);
+		const float Alpha = 1.f - FMath::Square(1.f - FilterFadeTime / 0.12f);
+		BackpackGrid->SetRenderOpacity(0.76f + 0.24f * Alpha);
+	}
 }
 
 void URuinmatesTerminalScreen::BeginOpenFade()
@@ -368,11 +398,18 @@ void URuinmatesTerminalScreen::BeginOpenFade()
 void URuinmatesTerminalScreen::UpdateShellBounds(const FGeometry& MyGeometry)
 {
 	const FVector2D ViewSize = MyGeometry.GetLocalSize();
-	if (!ShellRoot || ViewSize.Equals(LastViewSize, 0.5f) || ViewSize.Y <= 1.f)
+	if (ViewSize.Equals(LastViewSize, 0.5f) || ViewSize.Y <= 1.f)
 	{
 		return;
 	}
 	LastViewSize = ViewSize;
+	if (DesignCanvas)
+	{
+		const float Scale = FMath::Min(ViewSize.X / 1920.f, ViewSize.Y / 1080.f);
+		DesignCanvas->SetRenderScale(FVector2D(Scale));
+		return;
+	}
+	if (!ShellRoot) return;
 	float SideInset = ShellOuterX;
 	const float MaxWidth = ViewSize.Y * MaxShellAspect;
 	if (ViewSize.X > MaxWidth)
@@ -387,6 +424,21 @@ void URuinmatesTerminalScreen::UpdateShellBounds(const FGeometry& MyGeometry)
 
 void URuinmatesTerminalScreen::UpdateCellSizes(bool bForce)
 {
+	if (DesignCanvas)
+	{
+		if (bForce)
+		{
+			for (URuinmatesTerminalItemSlot* Cell : BackpackSlots)
+			{
+				if (Cell) Cell->Configure(FVector2D(168.f, 112.f), ERuinmatesTerminalSlotLayout::Grid);
+			}
+			for (URuinmatesTerminalItemSlot* Cell : LootSlots)
+			{
+				if (Cell) Cell->Configure(FVector2D(168.f, 112.f), ERuinmatesTerminalSlotLayout::Grid);
+			}
+		}
+		return;
+	}
 	// Cell width = (scroll width - scrollbar - columns * gap) / columns, from the arranged geometry.
 	if (BackpackScroll)
 	{
@@ -425,6 +477,11 @@ void URuinmatesTerminalScreen::UpdateCellSizes(bool bForce)
 
 void URuinmatesTerminalScreen::BuildChrome()
 {
+	if (LegacyTerminal.GetValueOnGameThread() == 0)
+	{
+		BuildV4Chrome();
+		return;
+	}
 	UCanvasPanel* Canvas = WidgetTree->ConstructWidget<UCanvasPanel>(UCanvasPanel::StaticClass(), TEXT("WBP_TerminalRoot"));
 	WidgetTree->RootWidget = Canvas;
 
@@ -874,16 +931,26 @@ void URuinmatesTerminalScreen::OpenFor(ARuinmatesCharacter* InCharacter, ARuinma
 	CloseSlotMenu();
 	bLive = true;
 	bClosing = false;
+	VisualMode = IsValid(InContainer) ? 1 : 0;
 	LiveCharacter = InCharacter;
 	LiveContainer = InContainer;
 	ActiveFilter = NAME_None;
 	BindSources();
 	RefreshFromLive();
+	if (PreviewNavigation) PreviewNavigation->SetVisibility(ESlateVisibility::Collapsed);
+	if (PreviewBadge) PreviewBadge->SetVisibility(ESlateVisibility::Collapsed);
+	if (CharacterPreview) CharacterPreview->SetCharacter(VisualMode == 0 ? InCharacter : nullptr);
+	if (SquadRadio) SquadRadio->SetPreview(false);
 	BeginOpenFade();
 }
 
 void URuinmatesTerminalScreen::ShowPreview(bool bSearchPage)
 {
+	if (DesignCanvas)
+	{
+		ShowVisualPreview(bSearchPage ? 1 : 0);
+		return;
+	}
 	CloseSlotMenu();
 	UnbindSources();
 	bLive = false;
@@ -905,7 +972,14 @@ void URuinmatesTerminalScreen::RefreshTabStyles()
 		const bool bSelected = TabFilters.IsValidIndex(Index) && TabFilters[Index] == ActiveFilter;
 		if (UButton* Tab = TabButtons[Index])
 		{
-			Tab->SetStyle(RuinmatesUI::TabStyle(bSelected));
+			if (URuinmatesTechButton* Tech = Cast<URuinmatesTechButton>(Tab))
+			{
+				Tech->SetSelected(bSelected);
+			}
+			else
+			{
+				Tab->SetStyle(RuinmatesUI::TabStyle(bSelected));
+			}
 		}
 		const FLinearColor Ink = bSelected ? FLinearColor::White : RuinmatesUI::TextSecondary();
 		if (UTextBlock* Label = TabLabels.IsValidIndex(Index) ? TabLabels[Index].Get() : nullptr)
@@ -966,7 +1040,7 @@ void URuinmatesTerminalScreen::ApplyPageText()
 	}
 	if (RightSwitcher)
 	{
-		RightSwitcher->SetActiveWidgetIndex(Page.bRightIsContainer ? 1 : 0);
+		RightSwitcher->SetActiveWidgetIndex(DesignCanvas && VisualMode >= 3 ? VisualMode - 1 : Page.bRightIsContainer ? 1 : 0);
 	}
 	if (!Page.bRightIsContainer)
 	{
@@ -1038,6 +1112,7 @@ void URuinmatesTerminalScreen::ApplyPageText()
 	}
 	RebuildFooterHints(Page.bRightIsContainer);
 	RefreshTabStyles();
+	RefreshVisualPage();
 }
 
 void URuinmatesTerminalScreen::SyncGrid(UUniformGridPanel* Grid, TArray<TObjectPtr<URuinmatesTerminalItemSlot>>& Cells,
@@ -1086,6 +1161,10 @@ void URuinmatesTerminalScreen::SyncGrid(UUniformGridPanel* Grid, TArray<TObjectP
 		if (URuinmatesTerminalItemSlot* Cell = Cells[Index])
 		{
 			Cell->ApplyView(Views[Index]);
+			if (!bLoot)
+			{
+				Cell->SetBackpackDragEnabled(bLive && ActiveFilter.IsNone());
+			}
 		}
 	}
 	if (bGrew)
@@ -1096,13 +1175,19 @@ void URuinmatesTerminalScreen::SyncGrid(UUniformGridPanel* Grid, TArray<TObjectP
 
 void URuinmatesTerminalScreen::RebuildSlots()
 {
-	// The filter never moves items: hidden stacks keep their stable index and draw dimmed.
-	TArray<FRuinmatesTerminalSlotView> Shown = Page.Backpack;
-	for (FRuinmatesTerminalSlotView& View : Shown)
-	{
-		View.bDimmed = !ActiveFilter.IsNone() && View.State == ERuinmatesTerminalSlotState::Revealed && View.Category != ActiveFilter;
-	}
+	TArray<FRuinmatesTerminalSlotView> Shown = RuinmatesTerminalDisplay::FilterBackpackSlots(Page.Backpack, ActiveFilter);
 	SyncGrid(BackpackGrid, BackpackSlots, Shown, BackpackColumns, false);
+	for (URuinmatesTerminalItemSlot* Cell : BackpackSlots)
+	{
+		if (Cell)
+		{
+		}
+	}
+	if (CategoryEmptyHint)
+	{
+		CategoryEmptyHint->SetVisibility(!ActiveFilter.IsNone() && Shown.IsEmpty()
+			? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+	}
 
 	if (Page.bRightIsContainer)
 	{
@@ -1116,7 +1201,16 @@ void URuinmatesTerminalScreen::RebuildSlots()
 
 void URuinmatesTerminalScreen::SetFilter(FName InFilter)
 {
+	if (ActiveFilter == InFilter)
+	{
+		return;
+	}
 	ActiveFilter = InFilter;
+	FilterFadeTime = 0.f;
+	if (BackpackGrid)
+	{
+		BackpackGrid->SetRenderOpacity(0.76f);
+	}
 	RefreshTabStyles();
 	RebuildSlots();
 }
@@ -1125,6 +1219,10 @@ void URuinmatesTerminalScreen::SelectAll() { SetFilter(NAME_None); }
 void URuinmatesTerminalScreen::SelectConsumable() { SetFilter(TEXT("Consumable")); }
 void URuinmatesTerminalScreen::SelectMaterial() { SetFilter(TEXT("Material")); }
 void URuinmatesTerminalScreen::SelectQuest() { SetFilter(TEXT("Quest")); }
+void URuinmatesTerminalScreen::SelectAmmo() { SetFilter(TEXT("Ammo")); }
+void URuinmatesTerminalScreen::SelectValuable() { SetFilter(TEXT("Valuable")); }
+void URuinmatesTerminalScreen::SelectWeapon() { SetFilter(TEXT("Weapon")); }
+void URuinmatesTerminalScreen::SelectEquipment() { SetFilter(TEXT("Equipment")); }
 
 void URuinmatesTerminalScreen::HandleSlotClicked(int32 StableIndex)
 {
@@ -1135,6 +1233,12 @@ void URuinmatesTerminalScreen::HandleSlotClicked(int32 StableIndex)
 		View.bSelected = View.StableIndex == StableIndex && View.State == ERuinmatesTerminalSlotState::Revealed;
 	}
 	RebuildSlots();
+	if (!bLive && VisualMode == 3 && bVisualSell)
+	{
+		VisualSelected = StableIndex;
+		VisualQuantity = 1;
+		RefreshVisualPage();
+	}
 }
 
 void URuinmatesTerminalScreen::HandleSlotRightClicked(int32 StableIndex)
@@ -1341,6 +1445,7 @@ void URuinmatesTerminalScreen::RefreshFromLive()
 		{
 			const FRuinmatesItemStack& Stack = Slots[Index];
 			View.State = ERuinmatesTerminalSlotState::Revealed;
+			View.ItemId = Stack.ItemId;
 			View.Name = Stack.DisplayName;
 			View.Count = Stack.Count;
 			View.Quality = Stack.Quality;
@@ -1364,16 +1469,10 @@ void URuinmatesTerminalScreen::RefreshFromLive()
 		Next.bRightIsContainer = true;
 		Next.RightTitle = Container->GetContainerName();
 		const TArray<FRuinmatesItemStack>& Contents = Container->GetContents();
-		int32 Occupied = 0;
 		int32 Revealed = 0;
 		int32 SearchingIndex = INDEX_NONE;
 		for (int32 Index = 0; Index < Contents.Num(); ++Index)
 		{
-			if (Contents[Index].IsEmpty())
-			{
-				continue;
-			}
-			++Occupied;
 			if (Contents[Index].bRevealed)
 			{
 				++Revealed;
@@ -1386,8 +1485,8 @@ void URuinmatesTerminalScreen::RefreshFromLive()
 		Next.RightSubtitle = FText::Format(
 			NSLOCTEXT("RuinMatesUI", "LiveSearchCount", "{0} / {1}"),
 			FText::AsNumber(Revealed),
-			FText::AsNumber(Occupied));
-		Next.RightProgress = Occupied > 0 ? static_cast<float>(Revealed) / static_cast<float>(Occupied) : 1.f;
+			FText::AsNumber(Contents.Num()));
+		Next.RightProgress = Contents.Num() > 0 ? static_cast<float>(Revealed) / static_cast<float>(Contents.Num()) : 1.f;
 		Next.RightSlots.Reserve(Contents.Num());
 		for (int32 Index = 0; Index < Contents.Num(); ++Index)
 		{
@@ -1396,8 +1495,9 @@ void URuinmatesTerminalScreen::RefreshFromLive()
 			const FRuinmatesItemStack& Stack = Contents[Index];
 			if (Stack.IsEmpty())
 			{
-				// Container slots never refill: an empty one was taken by someone.
-				View.State = ERuinmatesTerminalSlotState::Taken;
+				View.State = Stack.bRevealed
+					? ERuinmatesTerminalSlotState::Taken
+					: Index == SearchingIndex ? ERuinmatesTerminalSlotState::Searching : ERuinmatesTerminalSlotState::Unknown;
 			}
 			else if (!Stack.bRevealed)
 			{
@@ -1408,6 +1508,7 @@ void URuinmatesTerminalScreen::RefreshFromLive()
 			else
 			{
 				View.State = ERuinmatesTerminalSlotState::Revealed;
+				View.ItemId = Stack.ItemId;
 				View.Name = Stack.DisplayName;
 				View.Count = Stack.Count;
 				View.Quality = Stack.Quality;
@@ -1503,6 +1604,9 @@ static void OpenTerminalPreview(bool bSearch)
 	{
 		return;
 	}
+	TArray<UUserWidget*> Existing;
+	UWidgetBlueprintLibrary::GetAllWidgetsOfClass(World, Existing, URuinmatesTerminalScreen::StaticClass(), true);
+	for (UUserWidget* Widget : Existing) Widget->RemoveFromParent();
 	URuinmatesTerminalScreen* Screen = CreateWidget<URuinmatesTerminalScreen>(Player, URuinmatesTerminalScreen::StaticClass());
 	if (!Screen)
 	{
@@ -1510,13 +1614,45 @@ static void OpenTerminalPreview(bool bSearch)
 	}
 	Screen->AddToViewport(40);
 	Screen->ShowPreview(bSearch);
-	FInputModeGameAndUI InputMode;
-	InputMode.SetHideCursorDuringCapture(false);
+	FInputModeUIOnly InputMode;
 	InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
 	InputMode.SetWidgetToFocus(Screen->TakeWidget());
 	Player->SetInputMode(InputMode);
 	Player->SetShowMouseCursor(true);
 }
+
+static void OpenVisualTerminal(int32 Mode, int32 PreviewCapacity = 20)
+{
+	if (!GEngine) return;
+	for (const FWorldContext& Context : GEngine->GetWorldContexts())
+	{
+		UWorld* World = Context.World();
+		if (!World || (Context.WorldType != EWorldType::PIE && Context.WorldType != EWorldType::Game)) continue;
+		APlayerController* Player = World->GetFirstPlayerController();
+		if (!Player || !Player->IsLocalController()) continue;
+		TArray<UUserWidget*> Existing;
+		UWidgetBlueprintLibrary::GetAllWidgetsOfClass(World, Existing, URuinmatesTerminalScreen::StaticClass(), true);
+		for (UUserWidget* Widget : Existing) Widget->RemoveFromParent();
+		URuinmatesTerminalScreen* Screen = CreateWidget<URuinmatesTerminalScreen>(Player, URuinmatesTerminalScreen::StaticClass());
+		if (!Screen) return;
+		Screen->AddToViewport(40);
+		Screen->ShowVisualPreview(Mode, PreviewCapacity);
+		FInputModeUIOnly ModeUI;
+		ModeUI.SetWidgetToFocus(Screen->TakeWidget());
+		Player->SetInputMode(ModeUI);
+		Player->SetShowMouseCursor(true);
+		return;
+	}
+}
+
+static FAutoConsoleCommand GPreviewStorage(TEXT("Ruinmates.PreviewStorage"), TEXT("Isolated storage visual preview."),
+	FConsoleCommandDelegate::CreateStatic([]() { OpenVisualTerminal(2); }));
+static FAutoConsoleCommand GPreviewThirty(TEXT("Ruinmates.PreviewInventory30"), TEXT("Thirty-slot isolated backpack for scroll verification."),
+	FConsoleCommandDelegate::CreateStatic([]() { OpenVisualTerminal(0,30); }));
+static FAutoConsoleCommand GPreviewMarket(TEXT("Ruinmates.PreviewMarket"), TEXT("Isolated market visual preview; no transactions."),
+	FConsoleCommandDelegate::CreateStatic([]() { OpenVisualTerminal(3); }));
+static FAutoConsoleCommand GPreviewComponents(TEXT("Ruinmates.UIShowcase"), TEXT("V4 native component and state showcase."),
+	FConsoleCommandDelegate::CreateStatic([]() { OpenVisualTerminal(4); }));
 
 static FAutoConsoleCommand GPreviewInventory(
 	TEXT("Ruinmates.PreviewInventory"),

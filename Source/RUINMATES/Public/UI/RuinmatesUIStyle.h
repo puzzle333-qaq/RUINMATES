@@ -32,7 +32,7 @@ namespace RuinmatesUI
 	}
 
 	// ---- V2 palette -------------------------------------------------------------------
-	inline FLinearColor ShellDark() { return Token(TEXT("08121D"), 1.f); }
+	inline FLinearColor ShellDark() { return Token(TEXT("101D25"), 1.f); }
 	inline FLinearColor Metal() { return Token(TEXT("263B50"), 1.f); }
 	inline FLinearColor MetalHighlight() { return Token(TEXT("718CA3"), 1.f); }
 	inline FLinearColor Screen() { return Token(TEXT("0A1626"), 0.84f); }
@@ -40,13 +40,13 @@ namespace RuinmatesUI
 	inline FLinearColor SlotFill() { return Token(TEXT("142C44"), 0.75f); }
 	inline FLinearColor Stroke() { return Token(TEXT("365C76"), 0.60f); }
 	inline FLinearColor StrokeHighlight() { return Token(TEXT("66C9F3"), 1.f); }
-	inline FLinearColor Cyan() { return Token(TEXT("42D4F4"), 1.f); }
-	inline FLinearColor TextWeak() { return Token(TEXT("648197"), 1.f); }
+	inline FLinearColor Cyan() { return Token(TEXT("65E3EA"), 1.f); }
+	inline FLinearColor TextWeak() { return Token(TEXT("819BA5"), 1.f); }
 	inline FLinearColor Money() { return Token(TEXT("E7BF6B"), 1.f); }
 	inline FLinearColor Error() { return Token(TEXT("E17B83"), 1.f); }
 
 	// ---- V1 tokens kept for existing callers (trade screen) ----------------------------
-	inline FLinearColor Overlay() { return Token(TEXT("040B14"), 0.44f); }
+	inline FLinearColor Overlay() { return Token(TEXT("101D25"), 0.44f); }
 	inline FLinearColor Shell() { return Token(TEXT("0A1626"), 0.84f); }
 	inline FLinearColor Panel() { return Token(TEXT("102A43"), 0.74f); }
 	inline FLinearColor PanelElevated() { return Token(TEXT("153651"), 0.86f); }
@@ -54,25 +54,25 @@ namespace RuinmatesUI
 	inline FLinearColor SlotHover() { return Token(TEXT("23516D"), 0.76f); }
 	inline FLinearColor Line() { return Token(TEXT("547D9D"), 0.52f); }
 	inline FLinearColor LineStrong() { return Token(TEXT("83B8D6"), 0.85f); }
-	inline FLinearColor Accent() { return Token(TEXT("66C9F3"), 1.f); }
+	inline FLinearColor Accent() { return Token(TEXT("65E3EA"), 1.f); }
 	inline FLinearColor AccentFill() { return Token(TEXT("2C7DA6"), 0.28f); }
-	inline FLinearColor TextPrimary() { return Token(TEXT("E7F2FA"), 1.f); }
-	inline FLinearColor TextSecondary() { return Token(TEXT("9DB7CA"), 1.f); }
-	inline FLinearColor TextMuted() { return Token(TEXT("6C879E"), 1.f); }
-	inline FLinearColor Success() { return Token(TEXT("65C5A3"), 1.f); }
+	inline FLinearColor TextPrimary() { return Token(TEXT("DAE6E9"), 1.f); }
+	inline FLinearColor TextSecondary() { return Token(TEXT("819BA5"), 1.f); }
+	inline FLinearColor TextMuted() { return Token(TEXT("819BA5"), 1.f); }
+	inline FLinearColor Success() { return Token(TEXT("65C99B"), 1.f); }
 	inline FLinearColor Warning() { return Token(TEXT("E8B56C"), 1.f); }
-	inline FLinearColor Danger() { return Token(TEXT("E77D80"), 1.f); }
+	inline FLinearColor Danger() { return Token(TEXT("DB6D70"), 1.f); }
 
 	// Existing ERuinmatesItemQuality, in order: Common, Fine, Advanced, Rare, Precious.
 	inline FLinearColor QualityColor(uint8 QualityIndex)
 	{
 		switch (QualityIndex)
 		{
-		case 1: return Token(TEXT("72C49D"), 1.f);
-		case 2: return Token(TEXT("69ACF0"), 1.f);
-		case 3: return Token(TEXT("B394ED"), 1.f);
-		case 4: return Token(TEXT("E7BF6B"), 1.f);
-		default: return Token(TEXT("A6B5C7"), 1.f);
+		case 1:
+		case 2: return Token(TEXT("65C98B"), 1.f);
+		case 3: return Token(TEXT("B28AF0"), 1.f);
+		case 4: return Token(TEXT("E8BD60"), 1.f);
+		default: return Token(TEXT("D7DFE3"), 1.f);
 		}
 	}
 
@@ -96,6 +96,12 @@ namespace RuinmatesUI
 
 	/** Loads an absolute texture path (item icons from DT_Items). Cached; null-safe. */
 	RUINMATES_API UTexture2D* TextureAt(const FSoftObjectPath& Path);
+
+	/** V4 brush with exact import-manifest geometry, half-size logical corners, and no colour tint. */
+	RUINMATES_API FSlateBrush V4(const TCHAR* RelativePath);
+
+	/** Four visual finishes for the existing five gameplay qualities; Fine/Advanced share green. */
+	RUINMATES_API const TCHAR* QualityFinish(uint8 QualityIndex);
 
 	/** Nine-slice brush. Margin is a UV fraction; the brush draws at half the texture's pixels. */
 	RUINMATES_API FSlateBrush Box(const TCHAR* Group, const TCHAR* Name, const FMargin& Margin, const FLinearColor& Tint = FLinearColor::White);

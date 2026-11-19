@@ -19,7 +19,9 @@ public class RUINMATESEditor : ModuleRules
 		{
 			"AnimGraph",
 			"AnimGraphRuntime",
-			"BlueprintGraph"
+			"BlueprintGraph",
+			"Slate",
+			"SlateCore"
 		});
 	}
 }

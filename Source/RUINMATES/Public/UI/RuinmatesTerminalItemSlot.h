@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Blueprint/DragDropOperation.h"
 #include "Blueprint/UserWidget.h"
 #include "UI/RuinmatesTerminalTypes.h"
 #include "RuinmatesTerminalItemSlot.generated.h"
@@ -12,6 +13,32 @@ class UTextBlock;
 class UProgressBar;
 class UHorizontalBox;
 class UWidget;
+class URuinmatesTerminalItemSlot;
+
+UCLASS()
+class RUINMATES_API URuinmatesBackpackDragOperation : public UDragDropOperation
+{
+	GENERATED_BODY()
+
+public:
+	UPROPERTY()
+	TObjectPtr<URuinmatesTerminalItemSlot> SourceSlot;
+
+	UPROPERTY()
+	int32 SourceIndex = INDEX_NONE;
+
+	UPROPERTY()
+	FName SourceItemId;
+
+	UPROPERTY()
+	ERuinmatesItemQuality SourceQuality = ERuinmatesItemQuality::Common;
+
+	UPROPERTY()
+	int32 SourceCount = 0;
+
+	UPROPERTY()
+	uint32 ExpectedRevision = 0;
+};
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FRuinmatesTerminalSlotClicked, int32, StableIndex);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FRuinmatesTerminalSlotRightClicked, int32, StableIndex);
@@ -45,6 +72,8 @@ public:
 
 	/** Applies new data. Cheap when nothing changed, so the screen can call it on every refresh. */
 	void ApplyView(const FRuinmatesTerminalSlotView& InView);
+	void SetBackpackDragEnabled(bool bEnabled);
+	void SetDragging(bool bDragging);
 
 	const FRuinmatesTerminalSlotView& GetView() const { return View; }
 
@@ -52,6 +81,11 @@ protected:
 	virtual void NativeOnInitialized() override;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 	virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
+	virtual void NativeOnDragDetected(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent, UDragDropOperation*& OutOperation) override;
+	virtual void NativeOnDragCancelled(const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation) override;
+	virtual void NativeOnDragEnter(const FGeometry& InGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation) override;
+	virtual void NativeOnDragLeave(const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation) override;
+	virtual bool NativeOnDrop(const FGeometry& InGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation) override;
 
 	UFUNCTION()
 	void HandleClicked();
@@ -120,13 +154,20 @@ protected:
 
 	UPROPERTY()
 	TObjectPtr<UImage> Selection;
+	/** Independent four-finish slashes remain visible beneath interaction highlights. */
+	UPROPERTY() TObjectPtr<UImage> FinishPips;
+	/** Native tooltip content retains the shared V4 panel and readable body font. */
+	UPROPERTY() TObjectPtr<USizeBox> DetailTooltip;
+	UPROPERTY() TObjectPtr<UTextBlock> DetailText;
 
 	FRuinmatesTerminalSlotView View;
-	FVector2D CellSize = FVector2D(184.f, 184.f);
+	FVector2D CellSize = FVector2D(168.f, 112.f);
 	ERuinmatesTerminalSlotLayout Layout = ERuinmatesTerminalSlotLayout::Grid;
 	FSoftObjectPath AppliedIcon;
 	int32 AppliedPlate = INDEX_NONE;
 	bool bHovered = false;
+	bool bBackpackDragEnabled = false;
+	bool bIsDragging = false;
 
 	/** Visual-only scan loop; the server reveal timer is the only real progress. */
 	float ScanTime = 0.f;
