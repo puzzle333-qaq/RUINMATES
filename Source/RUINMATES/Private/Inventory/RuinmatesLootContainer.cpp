@@ -83,7 +83,7 @@ void ARuinmatesLootContainer::BeginPlay()
         }
         else if (!AuthoredLoot.IsEmpty())
         {
-            Contents = AuthoredLoot;
+			NormalizeAuthoredLoot();
         }
         else
         {
@@ -94,6 +94,7 @@ void ARuinmatesLootContainer::BeginPlay()
         {
             Stack.bRevealed = false;
         }
+		RefreshPublicContents();
     }
 
     if (IsValid(Label))
@@ -105,7 +106,7 @@ void ARuinmatesLootContainer::BeginPlay()
 void ARuinmatesLootContainer::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-	DOREPLIFETIME(ARuinmatesLootContainer, Contents);
+	DOREPLIFETIME(ARuinmatesLootContainer, PublicContents);
 }
 
 bool ARuinmatesLootContainer::CanInteract_Implementation(APawn* InteractingPawn) const
@@ -192,6 +193,7 @@ int32 ARuinmatesLootContainer::GiveTo(APawn* Pawn, int32 SlotIndex)
 	{
 		Stack = FRuinmatesItemStack();
 	}
+	RefreshPublicContents();
 	OnChanged.Broadcast();
 	return Accepted;
 }
@@ -213,6 +215,62 @@ int32 ARuinmatesLootContainer::GiveAllRevealed(APawn* Pawn)
 void ARuinmatesLootContainer::OnRep_Contents()
 {
 	OnChanged.Broadcast();
+}
+
+void ARuinmatesLootContainer::NormalizeAuthoredLoot()
+{
+	Contents.Reset();
+	URuinmatesItemDatabaseSubsystem* Database = URuinmatesItemDatabaseSubsystem::Get(this);
+	for (FRuinmatesItemStack Stack : AuthoredLoot)
+	{
+		if (Database && Database->IsLoaded())
+		{
+			if (!Database->NormalizeStack(Stack, true))
+			{
+				UE_LOG(LogTemp, Warning, TEXT("RuinMates authored loot item could not be resolved in DT_Items: %s"), *Stack.ItemId.ToString());
+				continue;
+			}
+			const int32 StackMax = FMath::Max(1, Stack.MaxStack);
+			int32 Remaining = Stack.Count;
+			while (Remaining > 0)
+			{
+				FRuinmatesItemStack Chunk = Stack;
+				Chunk.Count = FMath::Min(StackMax, Remaining);
+				Chunk.bRevealed = false;
+				Contents.Add(Chunk);
+				Remaining -= Chunk.Count;
+			}
+		}
+		else if (!Stack.IsEmpty())
+		{
+			Stack.Count = FMath::Clamp(Stack.Count, 1, FMath::Max(1, Stack.MaxStack));
+			Stack.bRevealed = false;
+			Contents.Add(Stack);
+		}
+	}
+}
+
+void ARuinmatesLootContainer::RefreshPublicContents()
+{
+	PublicContents.SetNum(Contents.Num());
+	for (int32 Index = 0; Index < Contents.Num(); ++Index)
+	{
+		const FRuinmatesItemStack& ServerStack = Contents[Index];
+		if (ServerStack.IsEmpty())
+		{
+			PublicContents[Index] = FRuinmatesItemStack();
+			PublicContents[Index].bRevealed = true;
+		}
+		else if (ServerStack.bRevealed)
+		{
+			PublicContents[Index] = ServerStack;
+		}
+		else
+		{
+			PublicContents[Index] = FRuinmatesItemStack();
+			PublicContents[Index].bRevealed = false;
+		}
+	}
 }
 
 void ARuinmatesLootContainer::EnsureDefaultLoot()
@@ -251,6 +309,7 @@ void ARuinmatesLootContainer::RevealNext()
 		if (!Stack.IsEmpty() && !Stack.bRevealed)
 		{
 			Stack.bRevealed = true;
+			RefreshPublicContents();
 			OnChanged.Broadcast();
 			return;
 		}
@@ -272,7 +331,27 @@ void ARuinmatesLootContainer::GenerateLoot()
 		return;
 	}
 	const int32 LootCount = FMath::RandRange(FMath::Max(0,MinLootItems),MaxLootItems);
-	TArray<FRuinmatesLootEntry> AvailablePool = LootPool;
+	TArray<FRuinmatesLootEntry> AvailablePool;
+	URuinmatesItemDatabaseSubsystem* Database = URuinmatesItemDatabaseSubsystem::Get(this);
+	const bool bHasDatabase = Database && Database->IsLoaded();
+	for (const FRuinmatesLootEntry& Entry : LootPool)
+	{
+		FName EntryItemId = !Entry.ItemId.IsNone() ? Entry.ItemId : Entry.Item.ItemId;
+		if (Entry.Weight <= 0 || EntryItemId.IsNone())
+		{
+			continue;
+		}
+		if (bHasDatabase)
+		{
+			EntryItemId = Database->ResolveItemId(EntryItemId, Entry.Item.DisplayName);
+			if (EntryItemId.IsNone())
+			{
+				UE_LOG(LogTemp, Warning, TEXT("RuinMates loot pool item could not be resolved in DT_Items: %s"), *Entry.ItemId.ToString());
+				continue;
+			}
+		}
+		AvailablePool.Add(Entry);
+	}
 
 	for(int32 i = 0;i< LootCount;++i)
 	{
@@ -283,9 +362,9 @@ void ARuinmatesLootContainer::GenerateLoot()
 
 		int32 TotalWeight = 0;
 
-		for (const FRuinmatesLootEntry & Entry : AvailablePool)
+		for (const FRuinmatesLootEntry& Entry : AvailablePool)
 		{
-			if (Entry.Weight > 0 && !Entry.Item.ItemId.IsNone())
+			if (Entry.Weight > 0)
 			{
 				TotalWeight += Entry.Weight;
 			}
@@ -305,7 +384,7 @@ void ARuinmatesLootContainer::GenerateLoot()
 		{
 			const FRuinmatesLootEntry& Entry = AvailablePool[j];
 
-			if (Entry.Weight <= 0 || Entry.Item.ItemId.IsNone())
+			if (Entry.Weight <= 0)
 			{
 				continue;
 			}
@@ -326,12 +405,12 @@ void ARuinmatesLootContainer::GenerateLoot()
 
             // Prefer the authoritative database; fall back to the legacy embedded template so
             // containers authored before the database keep generating the same items.
-            const FName EntryItemId = !Entry.ItemId.IsNone() ? Entry.ItemId : Entry.Item.ItemId;
+            FName EntryItemId = !Entry.ItemId.IsNone() ? Entry.ItemId : Entry.Item.ItemId;
             FRuinmatesItemStack Stack;
 
-            URuinmatesItemDatabaseSubsystem* Database = URuinmatesItemDatabaseSubsystem::Get(this);
-            if (Database && Database->IsValidItemId(EntryItemId))
+			if (bHasDatabase)
             {
+				EntryItemId = Database->ResolveItemId(EntryItemId, Entry.Item.DisplayName);
                 const int32 StackMax = FMath::Max(1, Database->GetMaxStack(EntryItemId));
                 const int32 MinCount = FMath::Clamp(Entry.MinCount, 1, StackMax);
                 const int32 MaxCount = FMath::Clamp(Entry.MaxCount, MinCount, StackMax);
@@ -368,6 +447,6 @@ void ARuinmatesLootContainer::GenerateLoot()
             AvailablePool.RemoveAt(SelectedIndex);
         }
     }
-
+	RefreshPublicContents();
     OnChanged.Broadcast();
 }

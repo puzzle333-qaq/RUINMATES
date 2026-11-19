@@ -170,7 +170,7 @@ namespace RuinmatesItems
 		switch (Quality)
 		{
 		case ERuinmatesItemQuality::Fine: return NSLOCTEXT("RuinMates", "QualityFine", "精良");
-		case ERuinmatesItemQuality::Advanced: return NSLOCTEXT("RuinMates", "QualityAdvanced", "高级");
+		case ERuinmatesItemQuality::Advanced: return NSLOCTEXT("RuinMates", "QualityFineLegacy", "精良");
 		case ERuinmatesItemQuality::Rare: return NSLOCTEXT("RuinMates", "QualityRare", "稀有");
 		case ERuinmatesItemQuality::Precious: return NSLOCTEXT("RuinMates", "QualityPrecious", "珍贵");
 		case ERuinmatesItemQuality::Common:
@@ -195,7 +195,7 @@ namespace RuinmatesItems
 		switch (Quality)
 		{
 		case ERuinmatesItemQuality::Fine: return FLinearColor(0.55f, 0.66f, 0.48f);
-		case ERuinmatesItemQuality::Advanced: return FLinearColor(0.45f, 0.62f, 0.78f);
+		case ERuinmatesItemQuality::Advanced: return FLinearColor(0.55f, 0.66f, 0.48f);
 		case ERuinmatesItemQuality::Rare: return FLinearColor(0.62f, 0.45f, 0.82f);
 		case ERuinmatesItemQuality::Precious: return FLinearColor(0.93f, 0.76f, 0.32f);
 		case ERuinmatesItemQuality::Common:

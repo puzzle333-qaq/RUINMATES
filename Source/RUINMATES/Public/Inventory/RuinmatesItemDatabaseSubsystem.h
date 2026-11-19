@@ -26,6 +26,8 @@ public:
 
 	bool IsValidItemId(FName ItemId) const;
 	const FRuinmatesItemRow* FindItemDefinition(FName ItemId) const;
+	FName ResolveItemId(FName ItemId, const FText& LegacyDisplayName = FText::GetEmpty()) const;
+	bool NormalizeStack(FRuinmatesItemStack& Stack, bool bPreserveCount = true) const;
 
 	// Table-level helpers so tooling and tests can use the same parsing rules without a subsystem.
 	static const FRuinmatesItemRow* FindRowInTable(const UDataTable* Table, FName ItemId);
@@ -34,6 +36,7 @@ public:
 	int32 GetItemBuyPrice(FName ItemId) const;
 	int32 GetItemSellPrice(FName ItemId) const;
 	int32 GetMaxStack(FName ItemId) const;
+	TArray<ERuinmatesItemCategory> GetAvailableCategories() const;
 
 	// Builds a runtime stack carrying the static fields copied from the database row.
 	FRuinmatesItemStack CreateItemStack(FName ItemId, int32 Count) const;

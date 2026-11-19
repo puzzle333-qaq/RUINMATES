@@ -1,5 +1,6 @@
 #include "Inventory/RuinmatesBackpackComponent.h"
 
+#include "Inventory/RuinmatesItemDatabaseSubsystem.h"
 #include "Net/UnrealNetwork.h"
 
 URuinmatesBackpackComponent::URuinmatesBackpackComponent()
@@ -14,6 +15,7 @@ void URuinmatesBackpackComponent::BeginPlay()
 	if (GetOwner() && GetOwner()->HasAuthority())
 	{
 		EnsureSlotCount();
+		NormalizeStoredSlots();
 	}
 }
 
@@ -22,6 +24,7 @@ void URuinmatesBackpackComponent::GetLifetimeReplicatedProps(TArray<FLifetimePro
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(URuinmatesBackpackComponent, Tier);
 	DOREPLIFETIME(URuinmatesBackpackComponent, Slots);
+	DOREPLIFETIME(URuinmatesBackpackComponent, Revision);
 }
 
 int32 URuinmatesBackpackComponent::GetUsedSlotCount() const
@@ -55,7 +58,18 @@ int32 URuinmatesBackpackComponent::TryAdd(const FRuinmatesItemStack& Incoming)
 	}
 
 	EnsureSlotCount();
-	int32 Remaining = Incoming.Count;
+	FRuinmatesItemStack CanonicalIncoming = Incoming;
+	if (const URuinmatesItemDatabaseSubsystem* Database = URuinmatesItemDatabaseSubsystem::Get(this))
+	{
+		if (Database->IsLoaded())
+		{
+			if (!Database->NormalizeStack(CanonicalIncoming, true))
+			{
+				return 0;
+			}
+		}
+	}
+	int32 Remaining = CanonicalIncoming.Count;
 
 	for (FRuinmatesItemStack& Slot : Slots)
 	{
@@ -63,7 +77,7 @@ int32 URuinmatesBackpackComponent::TryAdd(const FRuinmatesItemStack& Incoming)
 		{
 			break;
 		}
-		if (!Slot.CanStackWith(Incoming))
+		if (!Slot.CanStackWith(CanonicalIncoming))
 		{
 			continue;
 		}
@@ -83,8 +97,8 @@ int32 URuinmatesBackpackComponent::TryAdd(const FRuinmatesItemStack& Incoming)
 		{
 			continue;
 		}
-		const int32 Moved = FMath::Min(Incoming.MaxStack, Remaining);
-		Slot = Incoming;
+		const int32 Moved = FMath::Min(CanonicalIncoming.MaxStack, Remaining);
+		Slot = CanonicalIncoming;
 		Slot.Count = Moved;
 		Slot.bRevealed = true;
 		Remaining -= Moved;
@@ -93,7 +107,7 @@ int32 URuinmatesBackpackComponent::TryAdd(const FRuinmatesItemStack& Incoming)
 	const int32 Accepted = Incoming.Count - Remaining;
 	if (Accepted > 0)
 	{
-		OnChanged.Broadcast();
+		MarkChanged();
 	}
 	return Accepted;
 }
@@ -116,7 +130,7 @@ bool URuinmatesBackpackComponent::RemoveItemAt(int32 SlotIndex, int32 Count)
 	{
 		Slot = FRuinmatesItemStack();
 	}
-	OnChanged.Broadcast();
+	MarkChanged();
 	return true;
 }
 
@@ -127,14 +141,29 @@ int32 URuinmatesBackpackComponent::GetAvailableCapacityForItem(const FRuinmatesI
 		return 0;
 	}
 
-	const int32 StackMax = FMath::Max(1, Incoming.MaxStack);
+	int32 StackMax = FMath::Max(1, Incoming.MaxStack);
+	ERuinmatesItemQuality Quality = Incoming.Quality;
+	if (const URuinmatesItemDatabaseSubsystem* Database = URuinmatesItemDatabaseSubsystem::Get(this))
+	{
+		if (Database->IsLoaded())
+		{
+			const FName ResolvedId = Database->ResolveItemId(Incoming.ItemId, Incoming.DisplayName);
+			const FRuinmatesItemRow* Row = Database->FindItemDefinition(ResolvedId);
+			if (!Row)
+			{
+				return 0;
+			}
+			StackMax = FMath::Max(1, Row->MaxStack);
+			Quality = Row->Quality;
+		}
+	}
 	int32 EmptySlots = 0;
 	int32 Room = 0;
 	for (const FRuinmatesItemStack& Slot : Slots)
 	{
-		if (!Slot.IsEmpty() && Slot.ItemId == Incoming.ItemId && Slot.Quality == Incoming.Quality)
+		if (!Slot.IsEmpty() && Slot.ItemId == Incoming.ItemId && Slot.Quality == Quality)
 		{
-			Room += FMath::Max(0, Slot.MaxStack - Slot.Count);
+			Room += FMath::Max(0, StackMax - Slot.Count);
 		}
 		else if (Slot.IsEmpty())
 		{
@@ -173,7 +202,77 @@ bool URuinmatesBackpackComponent::DiscardSlot(int32 SlotIndex)
 		return false;
 	}
 	Slots[SlotIndex] = FRuinmatesItemStack();
-	OnChanged.Broadcast();
+	MarkChanged();
+	return true;
+}
+
+bool URuinmatesBackpackComponent::CanMoveSlotSnapshot(int32 SourceIndex, int32 TargetIndex, FName ExpectedSourceItemId,
+	ERuinmatesItemQuality ExpectedSourceQuality, int32 ExpectedSourceCount,
+	FName ExpectedTargetItemId, ERuinmatesItemQuality ExpectedTargetQuality,
+	int32 ExpectedTargetCount, uint32 ExpectedRevision) const
+{
+	if (ExpectedRevision != Revision || SourceIndex == TargetIndex || !Slots.IsValidIndex(SourceIndex) || !Slots.IsValidIndex(TargetIndex))
+	{
+		return false;
+	}
+
+	const FRuinmatesItemStack& Source = Slots[SourceIndex];
+	const FRuinmatesItemStack& Target = Slots[TargetIndex];
+	const bool bSourceMatches = !Source.IsEmpty() && !ExpectedSourceItemId.IsNone()
+		&& Source.ItemId == ExpectedSourceItemId && Source.Quality == ExpectedSourceQuality
+		&& Source.Count == ExpectedSourceCount;
+	const bool bTargetMatches = ExpectedTargetItemId.IsNone()
+		? Target.IsEmpty() && ExpectedTargetCount == 0
+		: !Target.IsEmpty() && Target.ItemId == ExpectedTargetItemId
+			&& Target.Quality == ExpectedTargetQuality && Target.Count == ExpectedTargetCount;
+	if (!bSourceMatches || !bTargetMatches)
+	{
+		return false;
+	}
+
+	return !(Source.ItemId == Target.ItemId && Source.Quality == Target.Quality
+		&& Target.Count >= Target.MaxStack);
+}
+
+bool URuinmatesBackpackComponent::TryMoveSlot(int32 SourceIndex, int32 TargetIndex, FName ExpectedSourceItemId,
+	ERuinmatesItemQuality ExpectedSourceQuality, int32 ExpectedSourceCount,
+	FName ExpectedTargetItemId, ERuinmatesItemQuality ExpectedTargetQuality,
+	int32 ExpectedTargetCount, uint32 ExpectedRevision)
+{
+	if (!GetOwner() || !GetOwner()->HasAuthority()
+		|| !CanMoveSlotSnapshot(SourceIndex, TargetIndex, ExpectedSourceItemId, ExpectedSourceQuality, ExpectedSourceCount,
+			ExpectedTargetItemId, ExpectedTargetQuality, ExpectedTargetCount, ExpectedRevision))
+	{
+		return false;
+	}
+
+	FRuinmatesItemStack& Source = Slots[SourceIndex];
+	FRuinmatesItemStack& Target = Slots[TargetIndex];
+	if (Target.IsEmpty())
+	{
+		Target = Source;
+		Source = FRuinmatesItemStack();
+	}
+	else if (Source.ItemId == Target.ItemId && Source.Quality == Target.Quality)
+	{
+		const int32 Moved = FMath::Min(Source.Count, FMath::Max(0, Target.MaxStack - Target.Count));
+		if (Moved <= 0)
+		{
+			return false;
+		}
+		Target.Count += Moved;
+		Source.Count -= Moved;
+		if (Source.Count <= 0)
+		{
+			Source = FRuinmatesItemStack();
+		}
+	}
+	else
+	{
+		Swap(Source, Target);
+	}
+
+	MarkChanged();
 	return true;
 }
 
@@ -195,4 +294,48 @@ void URuinmatesBackpackComponent::EnsureSlotCount()
 		return;
 	}
 	Slots.SetNum(Capacity);
+}
+
+void URuinmatesBackpackComponent::NormalizeStoredSlots()
+{
+	const URuinmatesItemDatabaseSubsystem* Database = URuinmatesItemDatabaseSubsystem::Get(this);
+	if (!Database || !Database->IsLoaded())
+	{
+		return;
+	}
+
+	bool bChanged = false;
+	for (FRuinmatesItemStack& Stack : Slots)
+	{
+		if (Stack.IsEmpty())
+		{
+			continue;
+		}
+	const FName OriginalId = Stack.ItemId;
+		const FText OriginalName = Stack.DisplayName;
+		const ERuinmatesItemQuality OriginalQuality = Stack.Quality;
+		const int32 OriginalValue = Stack.UnitValue;
+		const int32 OriginalMaxStack = Stack.MaxStack;
+		const FText OriginalDescription = Stack.Description;
+		const bool bOriginalUpgradeMaterial = Stack.bUpgradeMaterial;
+		if (!Database->NormalizeStack(Stack, true))
+		{
+			UE_LOG(LogTemp, Warning, TEXT("RuinMates backpack contains an item missing from DT_Items: %s"), *OriginalId.ToString());
+			continue;
+		}
+		bChanged |= OriginalId != Stack.ItemId || !OriginalName.EqualTo(Stack.DisplayName)
+			|| OriginalQuality != Stack.Quality || OriginalValue != Stack.UnitValue
+			|| OriginalMaxStack != Stack.MaxStack || !OriginalDescription.EqualTo(Stack.Description)
+			|| bOriginalUpgradeMaterial != Stack.bUpgradeMaterial;
+	}
+	if (bChanged)
+	{
+		MarkChanged();
+	}
+}
+
+void URuinmatesBackpackComponent::MarkChanged()
+{
+	++Revision;
+	OnChanged.Broadcast();
 }

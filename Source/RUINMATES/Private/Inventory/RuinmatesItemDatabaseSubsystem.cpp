@@ -83,13 +83,54 @@ const FRuinmatesItemRow* URuinmatesItemDatabaseSubsystem::FindItemDefinition(FNa
 	return FindRowInTable(LoadedTable, ItemId);
 }
 
+FName URuinmatesItemDatabaseSubsystem::ResolveItemId(FName ItemId, const FText& LegacyDisplayName) const
+{
+	if (FindItemDefinition(ItemId))
+	{
+		return ItemId;
+	}
+	if (!IsValid(LoadedTable) || LegacyDisplayName.IsEmpty())
+	{
+		return NAME_None;
+	}
+
+	FName ResolvedId = NAME_None;
+	const FString WantedName = LegacyDisplayName.ToString();
+	LoadedTable->ForeachRow<FRuinmatesItemRow>(TEXT("RuinMatesLegacyItemId"),
+		[&ResolvedId, &WantedName](const FName& RowName, const FRuinmatesItemRow& Row)
+		{
+			if (ResolvedId.IsNone() && Row.DisplayName.ToString() == WantedName)
+			{
+				ResolvedId = RowName;
+			}
+		});
+	return ResolvedId;
+}
+
+bool URuinmatesItemDatabaseSubsystem::NormalizeStack(FRuinmatesItemStack& Stack, bool bPreserveCount) const
+{
+	const int32 OriginalCount = Stack.Count;
+	const FName ResolvedId = ResolveItemId(Stack.ItemId, Stack.DisplayName);
+	const FRuinmatesItemRow* Row = FindItemDefinition(ResolvedId);
+	if (!Row || OriginalCount <= 0)
+	{
+		return false;
+	}
+
+	const bool bWasRevealed = Stack.bRevealed;
+	Stack = CreateStackFromRow(*Row, ResolvedId, bPreserveCount ? 1 : FMath::Min(OriginalCount, FMath::Max(1, Row->MaxStack)));
+	Stack.Count = bPreserveCount ? OriginalCount : FMath::Min(OriginalCount, FMath::Max(1, Row->MaxStack));
+	Stack.bRevealed = bWasRevealed;
+	return true;
+}
+
 FRuinmatesItemStack URuinmatesItemDatabaseSubsystem::CreateStackFromRow(const FRuinmatesItemRow& Row, FName ItemId, int32 Count)
 {
 	FRuinmatesItemStack Stack;
 	Stack.ItemId = ItemId;
 	Stack.DisplayName = Row.DisplayName;
 	Stack.Description = Row.Description;
-	Stack.Quality = Row.Quality;
+	Stack.Quality = Row.Quality == ERuinmatesItemQuality::Advanced ? ERuinmatesItemQuality::Fine : Row.Quality;
 	Stack.MaxStack = FMath::Max(1, Row.MaxStack);
 	Stack.UnitValue = FMath::Max(0, Row.SellPrice);
 	Stack.bUpgradeMaterial = Row.bUpgradeMaterial;
@@ -118,6 +159,29 @@ int32 URuinmatesItemDatabaseSubsystem::GetMaxStack(FName ItemId) const
 {
 	const FRuinmatesItemRow* Row = FindItemDefinition(ItemId);
 	return Row ? FMath::Max(1, Row->MaxStack) : 1;
+}
+
+TArray<ERuinmatesItemCategory> URuinmatesItemDatabaseSubsystem::GetAvailableCategories() const
+{
+	TArray<ERuinmatesItemCategory> Categories;
+	if (!IsValid(LoadedTable))
+	{
+		const_cast<URuinmatesItemDatabaseSubsystem*>(this)->EnsureLoaded();
+	}
+	if (!IsValid(LoadedTable))
+	{
+		return Categories;
+	}
+	LoadedTable->ForeachRow<FRuinmatesItemRow>(TEXT("RuinMatesItemCategories"),
+		[&Categories](const FName&, const FRuinmatesItemRow& Row)
+		{
+			Categories.AddUnique(Row.Category);
+		});
+	Categories.Sort([](ERuinmatesItemCategory A, ERuinmatesItemCategory B)
+	{
+		return static_cast<uint8>(A) < static_cast<uint8>(B);
+	});
+	return Categories;
 }
 
 FRuinmatesItemStack URuinmatesItemDatabaseSubsystem::CreateItemStack(FName ItemId, int32 Count) const

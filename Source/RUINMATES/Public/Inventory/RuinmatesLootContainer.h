@@ -37,7 +37,7 @@ public:
 	float GetCloseDistance() const { return CloseDistance; }
 
 	UFUNCTION(BlueprintPure, Category = "RuinMates|Loot")
-	const TArray<FRuinmatesItemStack>& GetContents() const { return Contents; }
+	const TArray<FRuinmatesItemStack>& GetContents() const { return PublicContents; }
 
 	UFUNCTION(BlueprintPure, Category = "RuinMates|Loot")
 	int32 GetRevealedCount() const;
@@ -68,8 +68,12 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "RuinMates|Loot")
 	TArray<FRuinmatesItemStack> AuthoredLoot;
 
-	UPROPERTY(ReplicatedUsing = OnRep_Contents)
+	UPROPERTY(Transient)
 	TArray<FRuinmatesItemStack> Contents;
+
+	/** Replicated search state. Hidden entries carry no item identity or static item data. */
+	UPROPERTY(ReplicatedUsing = OnRep_Contents)
+	TArray<FRuinmatesItemStack> PublicContents;
 
 	UPROPERTY(EditAnywhere, Category = "RuinMates|Loot")
 	TArray<FRuinmatesLootEntry> LootPool;
@@ -88,6 +92,8 @@ protected:
 	void OnRep_Contents();
 
 	void EnsureDefaultLoot();
+	void NormalizeAuthoredLoot();
+	void RefreshPublicContents();
 	void StartRevealTimer();
 	void RevealNext();
 

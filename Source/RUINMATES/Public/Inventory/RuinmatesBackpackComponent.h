@@ -33,6 +33,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "RuinMates|Backpack")
 	int32 GetLootValue() const;
 
+	/** Monotonic server revision used to reject inventory commands built from stale UI state. */
+	uint32 GetRevision() const { return Revision; }
+
 	UFUNCTION(BlueprintPure, Category = "RuinMates|Backpack")
 	const TArray<FRuinmatesItemStack>& GetSlots() const { return Slots; }
 
@@ -54,6 +57,16 @@ public:
 	/** Server only. Clears one stack so the player can make room. */
 	bool DiscardSlot(int32 SlotIndex);
 
+	/** Server only. Validates both slot snapshots before moving, merging, or swapping stacks. */
+	bool TryMoveSlot(int32 SourceIndex, int32 TargetIndex, FName ExpectedSourceItemId,
+		ERuinmatesItemQuality ExpectedSourceQuality, int32 ExpectedSourceCount,
+		FName ExpectedTargetItemId, ERuinmatesItemQuality ExpectedTargetQuality,
+		int32 ExpectedTargetCount, uint32 ExpectedRevision);
+	bool CanMoveSlotSnapshot(int32 SourceIndex, int32 TargetIndex, FName ExpectedSourceItemId,
+		ERuinmatesItemQuality ExpectedSourceQuality, int32 ExpectedSourceCount,
+		FName ExpectedTargetItemId, ERuinmatesItemQuality ExpectedTargetQuality,
+		int32 ExpectedTargetCount, uint32 ExpectedRevision) const;
+
 	UFUNCTION()
 	void OnRep_Slots();
 
@@ -64,8 +77,13 @@ protected:
 	UPROPERTY(ReplicatedUsing = OnRep_Slots)
 	TArray<FRuinmatesItemStack> Slots;
 
+	UPROPERTY(Replicated)
+	uint32 Revision = 0;
+
 	UFUNCTION()
 	void OnRep_Tier();
 
 	void EnsureSlotCount();
+	void NormalizeStoredSlots();
+	void MarkChanged();
 };

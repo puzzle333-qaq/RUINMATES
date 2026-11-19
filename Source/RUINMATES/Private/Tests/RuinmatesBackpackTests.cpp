@@ -169,4 +169,59 @@ bool FRuinmatesBackpackStackBoundaryTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRuinmatesBackpackMoveSnapshotTest, "RuinMates.Inventory.BackpackMoveSnapshots",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FRuinmatesBackpackMoveSnapshotTest::RunTest(const FString& Parameters)
+{
+	UWorld* World = UWorld::CreateWorld(EWorldType::Game, false, TEXT("RuinMatesBackpackMoveSnapshotTest"));
+	if (!TestNotNull(TEXT("World"), World)) return false;
+	World->AddToRoot();
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	SpawnParams.ObjectFlags |= RF_Transient;
+	ARuinmatesCharacter* Character = World->SpawnActor<ARuinmatesCharacter>(SpawnParams);
+	URuinmatesBackpackComponent* Backpack = Character ? Character->GetBackpack() : nullptr;
+	if (!TestTrue(TEXT("Character and backpack exist"), IsValid(Character) && IsValid(Backpack)))
+	{
+		World->DestroyWorld(false);
+		World->RemoveFromRoot();
+		return false;
+	}
+
+	FRuinmatesItemStack Bandage;
+	Bandage.ItemId = TEXT("Bandage");
+	Bandage.Quality = ERuinmatesItemQuality::Common;
+	Bandage.MaxStack = 10;
+	Bandage.Count = 8;
+	TestEqual(TEXT("Initial target stack is added"), Backpack->TryAdd(Bandage), 8);
+	Bandage.Count = 5;
+	TestEqual(TEXT("Source stack is split into the next slot"), Backpack->TryAdd(Bandage), 5);
+	// TryAdd filled the first slot to MaxStack, so free two units to give the merge somewhere to go.
+	TestTrue(TEXT("Reopen room in the target stack"), Backpack->RemoveItemAt(0, 2));
+	const uint32 MergeRevision = Backpack->GetRevision();
+	TestTrue(TEXT("Partial merge validates matching source and target snapshots"),
+		Backpack->CanMoveSlotSnapshot(1, 0, TEXT("Bandage"), ERuinmatesItemQuality::Common, 3,
+			TEXT("Bandage"), ERuinmatesItemQuality::Common, 8, MergeRevision));
+	TestTrue(TEXT("Partial merge succeeds"),
+		Backpack->TryMoveSlot(1, 0, TEXT("Bandage"), ERuinmatesItemQuality::Common, 3,
+			TEXT("Bandage"), ERuinmatesItemQuality::Common, 8, MergeRevision));
+	TestEqual(TEXT("Target is filled to MaxStack"), Backpack->GetSlots()[0].Count, 10);
+	TestEqual(TEXT("Overflow remains in the source slot"), Backpack->GetSlots()[1].Count, 1);
+	TestFalse(TEXT("Old revision cannot replay the same move"),
+		Backpack->TryMoveSlot(1, 0, TEXT("Bandage"), ERuinmatesItemQuality::Common, 3,
+			TEXT("Bandage"), ERuinmatesItemQuality::Common, 8, MergeRevision));
+
+	const uint32 MoveRevision = Backpack->GetRevision();
+	TestTrue(TEXT("Move to an empty slot succeeds"),
+		Backpack->TryMoveSlot(1, 2, TEXT("Bandage"), ERuinmatesItemQuality::Common, 1,
+			NAME_None, ERuinmatesItemQuality::Common, 0, MoveRevision));
+	TestTrue(TEXT("Source slot is empty after moving"), Backpack->GetSlots()[1].IsEmpty());
+	TestEqual(TEXT("Destination preserves the stack"), Backpack->GetSlots()[2].Count, 1);
+
+	World->DestroyWorld(false);
+	World->RemoveFromRoot();
+	return true;
+}
+
 #endif
