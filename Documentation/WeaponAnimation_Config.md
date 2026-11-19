@@ -1,13 +1,15 @@
 # Weapon animation configuration (five-field layout)
 
-Every weapon now needs **five** animation assets. Locomotion, sprint, crouch, jump, fall and landing
+Every weapon needs **four pose assets plus three montages**. Locomotion, sprint, crouch, jump, fall and landing
 are global character animations and are never configured per weapon.
 
 ## Fields
 
 | Field | Type | Used for |
 |---|---|---|
-| `ThirdPersonAnims.Idle` | `UAnimSequence` | Armed upper-body idle pose (hip and aim, all states) |
+| `ThirdPersonAnims.Idle` | `UAnimSequence` | Armed upper-body idle pose |
+| `ThirdPersonAnims.Sprint` | `UAnimSequence` (optional) | Armed upper-body sprint pose; falls back to `Idle` |
+| `ThirdPersonAnims.AimIdle` | `UAnimSequence` (optional) | ADS pose while aiming; falls back to `Idle` |
 | `ThirdPersonAnims.AimOffset` | `UBlendSpace` | Continuous aim-direction correction |
 | `ThirdPersonMontages.Equip` | `UAnimMontage` | Equip, first draw and later draws alike |
 | `ThirdPersonMontages.Reload` | `UAnimMontage` | Empty **and** tactical reload |
@@ -37,6 +39,11 @@ aim offset, unarmed idle).
   `Strafe_Standing`, `Strafe_Crouching`, `Strafe_Walking`, `FirstEquipMontage`,
   `EmptyReloadMontage`, `TacticalReloadMontage`, the random equip/fire montage arrays and the whole
   `WeaponMontages` (weapon-mesh) set.
+- Follow-up: armed `Sprint` and `AimIdle` (ADS) poses were re-added as explicit pose fields, because
+  sprinting and aiming need distinct upper-body poses. `AimIdle` is driven by `bIsAiming` and wins
+  over `Sprint`; both fall back to `Idle`. The Glock18 data uses `MF_Pistol_Idle_ADS` for its ADS
+  pose; no sprint-pose asset exists in the project yet, so that field stays empty.
+- Character base speeds were raised modestly: run 220 → 250, sprint 320 → 350 cm/s.
 - Weapon skeletal meshes no longer play montages; they keep their mesh, skeleton, sockets and muzzle
   calculation. Mechanical parts stay static.
 - One equip montage, one reload montage (no reload-type lookup), one fire montage.

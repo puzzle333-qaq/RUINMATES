@@ -86,12 +86,12 @@ Source/RUINMATES/
    - `UpperBody`：装备、换弹、射击（上半身分层，不打断下半身移动）。
    - `FullBody`：受击倒地、死亡、大幅交互动作。
    - 武器自身骨骼网格体**不再播放 Montage**；`WeaponSlot` 分组仅作历史保留，机械部件保持静态。
-4. **武器动画数据（五字段）**：
-   - 每把武器只在 `UWeaponData` 配置 `Idle`、`AimOffset`、`Equip`、`Reload`、`Fire` 五个动画资产，详见 `Documentation/WeaponAnimation_Config.md`。
+4. **武器动画数据（姿态 + 动作字段）**：
+   - 每把武器在 `UWeaponData` 配置姿态 `Idle`、`Sprint`、`AimIdle`(ADS)、`AimOffset` 与动作 `Equip`、`Reload`、`Fire`，详见 `Documentation/WeaponAnimation_Config.md`。
    - 移动、冲刺、蹲伏、跳跃、下落、落地为全局角色动画，禁止逐武器配置。
    - 允许不同武器共享同一动画资产；任何 Montage 可为空，必须空引用安全。
    - 换弹只有一套动画，不区分空仓/非空仓；首次装备与普通装备共用 `Equip`。
-   - 新增武器只需新建 `UWeaponData` 并填五个字段，禁止为此修改 `ABP_RuinmatesCombat`。
+   - 新增武器只需新建 `UWeaponData` 并填上述字段，禁止为此修改 `ABP_RuinmatesCombat`。
 ---
 
 ## 6. 自动化测试与构建工作流
