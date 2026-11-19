@@ -1,4 +1,5 @@
 #include "Weapon/BaseWeapon.h"
+#include "Game/RuinmatesGameMode.h"
 
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/World.h"
@@ -237,7 +238,13 @@ void ABaseWeapon::ApplyServerHit(const FHitResult& Hit)
 
 	if (UStatsComponent* Stats = UStatsComponent::FindStatsComponent(HitActor))
 	{
-		Stats->ChangeHealthByAmount(-CombatParams.Damage.Damage, GetInstigator());
+		// Server-side only: teammates take scaled damage, enemies keep the full amount.
+		float Damage = FMath::Max(0.f, CombatParams.Damage.Damage);
+		if (const ARuinmatesGameMode* GameMode = GetWorld() ? GetWorld()->GetAuthGameMode<ARuinmatesGameMode>() : nullptr)
+		{
+			Damage = GameMode->ScaleDamageForTarget(Damage, GetInstigator(), HitActor);
+		}
+		Stats->ChangeHealthByAmount(-Damage, GetInstigator());
 	}
 }
 

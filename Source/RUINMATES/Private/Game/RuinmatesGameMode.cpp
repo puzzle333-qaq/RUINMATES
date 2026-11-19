@@ -33,3 +33,20 @@ void ARuinmatesGameMode::PostLogin(APlayerController* NewPlayer)
 		Save->RestoreOrAssignMember(PS);
 	}
 }
+
+bool ARuinmatesGameMode::AreTeammates(const AActor* First, const AActor* Second)
+{
+	// Co-op has a single side: every player character is a teammate of every other one.
+	const ARuinmatesCharacter* FirstCharacter = Cast<ARuinmatesCharacter>(First);
+	const ARuinmatesCharacter* SecondCharacter = Cast<ARuinmatesCharacter>(Second);
+	return FirstCharacter && SecondCharacter && FirstCharacter != SecondCharacter;
+}
+
+float ARuinmatesGameMode::ScaleDamageForTarget(float BaseDamage, const AActor* DamageInstigator, const AActor* DamageVictim) const
+{
+	if (BaseDamage <= 0.f || !AreTeammates(DamageInstigator, DamageVictim))
+	{
+		return FMath::Max(0.f, BaseDamage);
+	}
+	return BaseDamage * GetFriendlyFireMultiplier();
+}
