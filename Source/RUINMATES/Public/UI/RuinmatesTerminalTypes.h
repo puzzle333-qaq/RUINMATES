@@ -107,3 +107,44 @@ namespace RuinmatesTerminalDisplay
 	RUINMATES_API TArray<FRuinmatesTerminalSlotView> FilterBackpackSlots(
 		const TArray<FRuinmatesTerminalSlotView>& Slots, FName Category);
 }
+
+/** Market transaction state shared by the V4 market page: pending request + selected sell stack. */
+struct RUINMATES_API FRuinmatesMarketTradeState
+{
+	bool bPending = false;
+	FName SellItemId;
+	ERuinmatesItemQuality SellQuality = ERuinmatesItemQuality::Common;
+	int32 SellSlot = INDEX_NONE;
+
+	/** True while a request is in flight and the confirm button must stay disabled. */
+	bool IsPending() const { return bPending; }
+
+	/** Starts a request; returns false when one is already in flight (double-click guard). */
+	bool BeginRequest()
+	{
+		if (bPending)
+		{
+			return false;
+		}
+		bPending = true;
+		return true;
+	}
+
+	/** Server answer received: the pending window ends but the selection stays for another try. */
+	void CompleteRequest() { bPending = false; }
+
+	/** Drops the selected sell stack; its identity can no longer be trusted. */
+	void ClearSelection()
+	{
+		SellItemId = NAME_None;
+		SellQuality = ERuinmatesItemQuality::Common;
+		SellSlot = INDEX_NONE;
+	}
+
+	/** Full reset, used when the market is reopened or closed. */
+	void Reset()
+	{
+		bPending = false;
+		ClearSelection();
+	}
+};

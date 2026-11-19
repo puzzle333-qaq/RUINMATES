@@ -216,6 +216,11 @@ void URuinmatesTerminalScreen::BuildV4Chrome()
 	CapacityBar = Bar(WidgetTree);
 	At(C, CapacityBar, 304, 288, 888, 6);
 
+	// Whole-backpack action, mirrored in the slot menu; the server owns the actual ordering.
+	SortButton = Button(WidgetTree, NSLOCTEXT("RuinMatesUI", "SortV4", "整理"));
+	SortButton->OnClicked.AddDynamic(this, &URuinmatesTerminalScreen::HandleSortBackpack);
+	At(C, SortButton, 672, 858, 116, 32);
+
 	TabButtons.Reset();
 	TabFilters.Reset();
 	TabLabels.Reset();
@@ -546,9 +551,15 @@ void URuinmatesTerminalScreen::OpenMarket(ARuinmatesCharacter* InCharacter, ARui
 	LiveMerchant = InMerchant;
 	LiveContainer = nullptr;
 	ActiveFilter = NAME_None;
+	// A reopened market never inherits a pending request, a selection or a stale result line.
+	TradeState.Reset();
 	VisualSelected = INDEX_NONE;
 	VisualQuantity = 1;
 	bVisualSell = false;
+	if (MarketStatusText)
+	{
+		MarketStatusText->SetText(FText::GetEmpty());
+	}
 	if (SquadRadio)
 	{
 		SquadRadio->SetPreview(false);
@@ -578,6 +589,7 @@ void URuinmatesTerminalScreen::ClearMarketSelection()
 {
 	VisualSelected = INDEX_NONE;
 	VisualQuantity = 1;
+	TradeState.ClearSelection();
 }
 
 void URuinmatesTerminalScreen::RefreshMarketLive()
@@ -698,6 +710,16 @@ void URuinmatesTerminalScreen::RefreshMarketLive()
 	}
 
 	// A stale selection (item consumed elsewhere, sold out, slot changed) is cleared, never kept.
+	if (bVisualSell && TradeState.SellSlot != INDEX_NONE && Page.Backpack.IsValidIndex(TradeState.SellSlot))
+	{
+		const FRuinmatesTerminalSlotView& SellView = Page.Backpack[TradeState.SellSlot];
+		if (SellView.State != ERuinmatesTerminalSlotState::Revealed
+			|| SellView.ItemId != TradeState.SellItemId || SellView.Quality != TradeState.SellQuality)
+		{
+			// The stack under the remembered index is a different item now; drop the selection.
+			ClearMarketSelection();
+		}
+	}
 	if (VisualSelected != INDEX_NONE && !IsMarketSelectionValid())
 	{
 		ClearMarketSelection();
@@ -726,20 +748,22 @@ void URuinmatesTerminalScreen::RefreshMarketLive()
 
 	const bool bHasSelection = IsMarketSelectionValid();
 	VisualQuantity = FMath::Clamp(VisualQuantity, 1, FMath::Max(1, MaxQuantity));
+	// int64 keeps large quantity x price combinations from overflowing before they reach the server.
+	const int64 TotalPrice = static_cast<int64>(UnitPrice) * static_cast<int64>(VisualQuantity);
 	if (MarketName) MarketName->SetText(bHasSelection ? SelectedName : NSLOCTEXT("RuinMatesUI", "SelectTradeItem", "未选择物资"));
 	if (MarketPrice) MarketPrice->SetText(FText::AsNumber(UnitPrice));
 	if (MarketQuantity) MarketQuantity->SetText(FText::AsNumber(VisualQuantity));
 	if (MarketTotal) MarketTotal->SetText(FText::Format(NSLOCTEXT("RuinMatesUI", "TradeLiveTotal", "合计  {0}"),
-		FText::AsNumber(UnitPrice * VisualQuantity)));
+		FText::AsNumber(TotalPrice)));
 	if (MarketConfirmButton)
 	{
-		MarketConfirmButton->SetIsEnabled(bHasSelection);
+		MarketConfirmButton->SetIsEnabled(bHasSelection && !TradeState.bPending);
 		if (UTextBlock* Label = Cast<UTextBlock>(MarketConfirmButton->GetContent()))
 		{
 			Label->SetText(bVisualSell ? NSLOCTEXT("RuinMatesUI", "SellV4", "出售") : NSLOCTEXT("RuinMatesUI", "BuyV4", "购买"));
 		}
 	}
-	if (MarketStatusText && MarketStatusText->GetText().IsEmpty())
+	if (!TradeState.bPending && MarketStatusText && MarketStatusText->GetText().IsEmpty())
 	{
 		MarketStatusText->SetText(bHasSelection
 			? FText::Format(NSLOCTEXT("RuinMatesUI", "TradeHintQty", "单价 {0} × {1}"), FText::AsNumber(UnitPrice), FText::AsNumber(VisualQuantity))
@@ -754,6 +778,8 @@ void URuinmatesTerminalScreen::ShowTradeResult(bool bSuccess, const FText& Messa
 	{
 		return;
 	}
+	// The server answer ends the pending window and is the last word on the status line.
+	TradeState.CompleteRequest();
 	if (MarketStatusText)
 	{
 		MarketStatusText->SetText(Message);
@@ -794,6 +820,19 @@ void URuinmatesTerminalScreen::HandleMarketSelected(int32 Index)
 	}
 	VisualSelected = Index;
 	VisualQuantity = 1;
+	if (bVisualSell && Page.Backpack.IsValidIndex(Index)
+		&& Page.Backpack[Index].State == ERuinmatesTerminalSlotState::Revealed)
+	{
+		// Remember what the slot holds so a later refresh can prove it is still the same stack.
+		TradeState.SellItemId = Page.Backpack[Index].ItemId;
+		TradeState.SellQuality = Page.Backpack[Index].Quality;
+		TradeState.SellSlot = Index;
+	}
+	else
+	{
+		TradeState.SellItemId = NAME_None;
+		TradeState.SellSlot = INDEX_NONE;
+	}
 	if (MarketStatusText) MarketStatusText->SetText(FText::GetEmpty());
 	RefreshMarketLive();
 }
@@ -832,6 +871,19 @@ void URuinmatesTerminalScreen::HandleMarketConfirm()
 		return;
 	}
 
+	// Mark pending and paint it before sending: a listen-server host receives the result
+	// synchronously inside the request, so anything written afterwards would overwrite it.
+	if (!TradeState.BeginRequest())
+	{
+		return;
+	}
+	if (MarketStatusText)
+	{
+		MarketStatusText->SetText(NSLOCTEXT("RuinMatesUI", "TradePending", "正在处理…"));
+		MarketStatusText->SetColorAndOpacity(FSlateColor(RuinmatesUI::TextWeak()));
+	}
+	RefreshMarketLive();
+
 	// Client only sends id/slot + quantity; prices and validation stay server side.
 	if (bVisualSell)
 	{
@@ -840,11 +892,5 @@ void URuinmatesTerminalScreen::HandleMarketConfirm()
 	else if (MarketGoodsIds.IsValidIndex(VisualSelected))
 	{
 		Character->RequestBuyItem(MarketGoodsIds[VisualSelected], VisualQuantity);
-	}
-
-	if (MarketStatusText)
-	{
-		MarketStatusText->SetText(NSLOCTEXT("RuinMatesUI", "TradePending", "正在处理…"));
-		MarketStatusText->SetColorAndOpacity(FSlateColor(RuinmatesUI::TextWeak()));
 	}
 }
