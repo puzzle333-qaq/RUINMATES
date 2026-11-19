@@ -44,8 +44,8 @@ bool FRuinmatesCharacterMovementTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	TestEqual(TEXT("Default walk speed is run speed"), Movement->MaxWalkSpeed, 220.f);
-	TestEqual(TEXT("Default crouched speed uses the 0.6 multiplier"), Movement->MaxWalkSpeedCrouched, 132.f);
+	TestEqual(TEXT("Default walk speed is run speed"), Movement->MaxWalkSpeed, 250.f);
+	TestEqual(TEXT("Default crouched speed uses the 0.6 multiplier"), Movement->MaxWalkSpeedCrouched, 150.f);
 	TestFalse(TEXT("Does not start sprinting"), Character->IsSprinting());
 
 	if (!Character->HasActorBegunPlay())
@@ -56,12 +56,12 @@ bool FRuinmatesCharacterMovementTest::RunTest(const FString& Parameters)
 
 	Character->StartSprint();
 	TestTrue(TEXT("StartSprint is accepted on authority"), Character->IsSprinting());
-	TestEqual(TEXT("Sprint speed applied"), Movement->MaxWalkSpeed, 320.f);
+	TestEqual(TEXT("Sprint speed applied"), Movement->MaxWalkSpeed, 350.f);
 	TestTrue(TEXT("Stats component is marked sprinting"), Stats->IsSprinting());
 
 	Character->StopSprint();
 	TestFalse(TEXT("StopSprint clears the sprint flag"), Character->IsSprinting());
-	TestEqual(TEXT("Run speed restored"), Movement->MaxWalkSpeed, 220.f);
+	TestEqual(TEXT("Run speed restored"), Movement->MaxWalkSpeed, 250.f);
 	TestFalse(TEXT("Stats component is not sprinting"), Stats->IsSprinting());
 
 	if (!Character->HasActorBegunPlay())
@@ -76,7 +76,7 @@ bool FRuinmatesCharacterMovementTest::RunTest(const FString& Parameters)
 		Stats->OnStaminaDepleted.Broadcast();
 	}
 	TestFalse(TEXT("Stamina depletion stops sprint"), Character->IsSprinting());
-	TestEqual(TEXT("Stamina depletion restores run speed"), Movement->MaxWalkSpeed, 220.f);
+	TestEqual(TEXT("Stamina depletion restores run speed"), Movement->MaxWalkSpeed, 250.f);
 
 	TestTrue(TEXT("Jump stamina is available at spawn"), Stats->HasStaminaForJump());
 	const float StaminaBeforeJump = Stats->Stamina;

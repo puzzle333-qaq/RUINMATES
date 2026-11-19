@@ -32,6 +32,14 @@ struct RUINMATES_API FPlayerAnim
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RuinMates|Anim")
 	TObjectPtr<UAnimSequence> Idle = nullptr;
 
+
+	// Sprint pose: armed upper body while sprinting. Optional; falls back to Idle.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RuinMates|Anim")
+	TObjectPtr<UAnimSequence> Sprint = nullptr;
+
+	// ADS pose: armed upper body while aiming. Optional; falls back to Idle.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RuinMates|Anim")
+	TObjectPtr<UAnimSequence> AimIdle = nullptr;
 	// Aim direction correction; shared across weapons when the pose matches.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RuinMates|Anim")
 	TObjectPtr<UBlendSpace> AimOffset = nullptr;

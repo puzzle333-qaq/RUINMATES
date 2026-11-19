@@ -132,6 +132,18 @@ void URuinmatesAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 	AimOffsetAlpha = IsValid(WeaponAimOffset) ? 1.f : 0.f;
 	UpperBodyAlpha = bHasWeapon ? 1.f : 0.f;
 	AirSequence = LocomotionState == 7 ? UnarmedLand : (Velocity.Z > 0.f ? UnarmedJump : UnarmedFall);
+	// Armed upper-body pose states: ADS wins over sprint, both fall back to the weapon idle.
+	if (!bInAir)
+	{
+		if (bAimingNow && WeaponAnims.AimIdle)
+		{
+			WeaponSequence = WeaponAnims.AimIdle.Get();
+		}
+		else if (bIsSprinting && WeaponAnims.Sprint)
+		{
+			WeaponSequence = WeaponAnims.Sprint.Get();
+		}
+	}
 	const bool bDirectionOnly = WeaponBlendSpace && WeaponBlendSpace->IsA<UBlendSpace1D>()
 		&& WeaponBlendSpace->GetBlendParameter(0).Min < 0.f;
 	BlendX = WeaponBlendSpace && WeaponBlendSpace->IsA<UBlendSpace1D>() && !bDirectionOnly ? Speed : MovementDirection;

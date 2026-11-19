@@ -199,10 +199,10 @@ protected:
 
 	// Speeds taken from the pre-trim third-person locomotion (not CQB TacticalTrim zeros).
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RuinMates|Movement")
-	float RunSpeed = 220.f;
+	float RunSpeed = 250.f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RuinMates|Movement")
-	float SprintSpeed = 320.f;
+	float SprintSpeed = 350.f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RuinMates|Movement", meta = (ClampMin = "0"))
 	float CrouchSpeedMultiplier = 0.6f;
