@@ -5,6 +5,7 @@
 #include "Inventory/RuinmatesBackpackComponent.h"
 #include "Inventory/RuinmatesLootContainer.h"
 #include "Inventory/RuinmatesItemDatabaseSubsystem.h"
+#include "UI/RuinmatesTerminalTypes.h"
 #include "Engine/DataTable.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -335,6 +336,238 @@ bool FRuinmatesBackpackTryAddLegacyTest::RunTest(const FString& Parameters)
 
 	World->DestroyWorld(false);
 	World->RemoveFromRoot();
+	return true;
+}
+#
+
+// ---- Sort / split (Phase 1D) -------------------------------------------------
+
+namespace
+{
+	FRuinmatesItemStack MakeItemStack(UDataTable* Table, const TCHAR* ItemId, int32 Count)
+	{
+		const FRuinmatesItemRow* Row = URuinmatesItemDatabaseSubsystem::FindRowInTable(Table, ItemId);
+		return Row ? URuinmatesItemDatabaseSubsystem::CreateStackFromRow(*Row, ItemId, Count) : FRuinmatesItemStack();
+	}
+
+	int32 TotalUnits(URuinmatesBackpackComponent* Backpack)
+	{
+		int32 Total = 0;
+		for (const FRuinmatesItemStack& Stack : Backpack->GetSlots())
+		{
+			Total += Stack.Count;
+		}
+		return Total;
+	}
+
+	UWorld* MakeBackpackWorld(ARuinmatesCharacter*& OutCharacter, URuinmatesBackpackComponent*& OutBackpack)
+	{
+		UWorld* World = UWorld::CreateWorld(EWorldType::Game, false, TEXT("RuinMatesBackpackOpsTest"));
+		World->AddToRoot();
+		FActorSpawnParameters SpawnParams;
+		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		SpawnParams.ObjectFlags |= RF_Transient;
+		OutCharacter = World->SpawnActor<ARuinmatesCharacter>(SpawnParams);
+		OutBackpack = OutCharacter ? OutCharacter->GetBackpack() : nullptr;
+		return World;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRuinmatesBackpackSortTest, "RuinMates.Inventory.BackpackSort",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FRuinmatesBackpackSortTest::RunTest(const FString& Parameters)
+{
+	UDataTable* Table = LoadObject<UDataTable>(nullptr, TEXT("/Game/RUINMATES/Data/Items/DT_Items.DT_Items"));
+	if (!TestNotNull(TEXT("DT_Items exists"), Table))
+	{
+		return false;
+	}
+
+	ARuinmatesCharacter* Character = nullptr;
+	URuinmatesBackpackComponent* Backpack = nullptr;
+	UWorld* World = MakeBackpackWorld(Character, Backpack);
+	if (!TestTrue(TEXT("Character and backpack exist"), IsValid(Character) && IsValid(Backpack)))
+	{
+		World->DestroyWorld(false);
+		World->RemoveFromRoot();
+		return false;
+	}
+
+	// Scrambled input: two Bandage stacks, 2 Cans, 5 AmmoBox.
+	Backpack->TryAdd(MakeItemStack(Table, TEXT("Bandage"), 3));
+	Backpack->TryAdd(MakeItemStack(Table, TEXT("Cans"), 2));
+	Backpack->TryAdd(MakeItemStack(Table, TEXT("AmmoBox"), 5));
+	Backpack->TryAdd(MakeItemStack(Table, TEXT("Bandage"), 4));
+
+	const int32 TotalBefore = TotalUnits(Backpack);
+	const int32 UsedBefore = Backpack->GetUsedSlotCount();
+	const uint32 RevisionBefore = Backpack->GetRevision();
+	TestTrue(TEXT("Sort is accepted with the current revision"), Backpack->TrySort(RevisionBefore));
+	TestEqual(TEXT("One sort emits exactly one revision"), Backpack->GetRevision(), RevisionBefore + 1);
+	TestEqual(TEXT("Sort conserves the total unit count"), TotalUnits(Backpack), TotalBefore);
+	TestEqual(TEXT("Sort merges the two Bandage stacks"), Backpack->GetUsedSlotCount(), 3);
+	TestTrue(TEXT("Merging never increases slot usage"), Backpack->GetUsedSlotCount() <= UsedBefore);
+
+	const TArray<FRuinmatesItemStack>& Slots = Backpack->GetSlots();
+	// The bare test world has no game instance, so the sorter falls back to the stack's own quality
+	// and id: the Fine AmmoBox leads, then the two Common stacks by id.
+	TestTrue(TEXT("Higher quality sorts first"), Slots.IsValidIndex(0) && Slots[0].ItemId == TEXT("AmmoBox") && Slots[0].Count == 5);
+	TestTrue(TEXT("The merged Bandage stack follows"), Slots.IsValidIndex(1) && Slots[1].ItemId == TEXT("Bandage") && Slots[1].Count == 7);
+	TestTrue(TEXT("Equal id/quality order is stable by ItemId"), Slots.IsValidIndex(2) && Slots[2].ItemId == TEXT("Cans"));
+	for (int32 Index = Backpack->GetUsedSlotCount(); Index < Slots.Num(); ++Index)
+	{
+		TestTrue(TEXT("Every gap is pushed to the end"), Slots[Index].IsEmpty());
+	}
+
+	// A second pass on an already sorted backpack must not reorder anything.
+	TArray<FName> FirstOrder;
+	for (const FRuinmatesItemStack& Stack : Slots)
+	{
+		FirstOrder.Add(Stack.ItemId);
+	}
+	TestTrue(TEXT("Sorting twice is accepted"), Backpack->TrySort(Backpack->GetRevision()));
+	for (int32 Index = 0; Index < Slots.Num(); ++Index)
+	{
+		TestEqual(TEXT("A sorted backpack keeps its order"), Slots[Index].ItemId, FirstOrder[Index]);
+	}
+	TestFalse(TEXT("A stale revision is rejected"), Backpack->TrySort(RevisionBefore));
+
+	// Same id, different quality must stay separate.
+	FRuinmatesItemStack FineBandage = MakeItemStack(Table, TEXT("Bandage"), 2);
+	FineBandage.Quality = ERuinmatesItemQuality::Fine;
+	Backpack->TryAdd(FineBandage);
+	const int32 BeforeQualitySort = Backpack->GetUsedSlotCount();
+	TestTrue(TEXT("Sort with mixed qualities succeeds"), Backpack->TrySort(Backpack->GetRevision()));
+	TestEqual(TEXT("Different qualities never merge"), Backpack->GetUsedSlotCount(), BeforeQualitySort);
+
+	World->DestroyWorld(false);
+	World->RemoveFromRoot();
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRuinmatesBackpackSortEdgesTest, "RuinMates.Inventory.BackpackSortEdges",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FRuinmatesBackpackSortEdgesTest::RunTest(const FString& Parameters)
+{
+	UDataTable* Table = LoadObject<UDataTable>(nullptr, TEXT("/Game/RUINMATES/Data/Items/DT_Items.DT_Items"));
+	if (!TestNotNull(TEXT("DT_Items exists"), Table))
+	{
+		return false;
+	}
+
+	ARuinmatesCharacter* Character = nullptr;
+	URuinmatesBackpackComponent* Backpack = nullptr;
+	UWorld* World = MakeBackpackWorld(Character, Backpack);
+	if (!TestTrue(TEXT("Character and backpack exist"), IsValid(Character) && IsValid(Backpack)))
+	{
+		World->DestroyWorld(false);
+		World->RemoveFromRoot();
+		return false;
+	}
+
+	// Empty backpack: the pass succeeds, changes nothing and still bumps the revision once.
+	const uint32 EmptyRevision = Backpack->GetRevision();
+	TestTrue(TEXT("An empty backpack can be sorted"), Backpack->TrySort(EmptyRevision));
+	TestEqual(TEXT("Empty sort still emits one revision"), Backpack->GetRevision(), EmptyRevision + 1);
+	TestEqual(TEXT("Empty sort keeps zero used slots"), Backpack->GetUsedSlotCount(), 0);
+
+	// Full backpack of non-stackable items: every slot is occupied, order must stay stable.
+	const int32 Capacity = Backpack->GetCapacity();
+	for (int32 Index = 0; Index < Capacity; ++Index)
+	{
+		FRuinmatesItemStack Core = MakeItemStack(Table, TEXT("Core"), 1);
+		TestEqual(TEXT("Core is accepted"), Backpack->TryAdd(Core), 1);
+	}
+	const int32 FullTotal = TotalUnits(Backpack);
+	TestEqual(TEXT("The backpack is full"), Backpack->GetUsedSlotCount(), Capacity);
+	TestTrue(TEXT("A full backpack can be sorted"), Backpack->TrySort(Backpack->GetRevision()));
+	TestEqual(TEXT("Full sort conserves the unit total"), TotalUnits(Backpack), FullTotal);
+	TestEqual(TEXT("Full sort keeps every slot filled"), Backpack->GetUsedSlotCount(), Capacity);
+
+	World->DestroyWorld(false);
+	World->RemoveFromRoot();
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRuinmatesBackpackSplitTest, "RuinMates.Inventory.BackpackSplit",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FRuinmatesBackpackSplitTest::RunTest(const FString& Parameters)
+{
+	UDataTable* Table = LoadObject<UDataTable>(nullptr, TEXT("/Game/RUINMATES/Data/Items/DT_Items.DT_Items"));
+	if (!TestNotNull(TEXT("DT_Items exists"), Table))
+	{
+		return false;
+	}
+
+	ARuinmatesCharacter* Character = nullptr;
+	URuinmatesBackpackComponent* Backpack = nullptr;
+	UWorld* World = MakeBackpackWorld(Character, Backpack);
+	if (!TestTrue(TEXT("Character and backpack exist"), IsValid(Character) && IsValid(Backpack)))
+	{
+		World->DestroyWorld(false);
+		World->RemoveFromRoot();
+		return false;
+	}
+
+	Backpack->TryAdd(MakeItemStack(Table, TEXT("Bandage"), 7));
+	const uint32 Revision = Backpack->GetRevision();
+	TestFalse(TEXT("Splitting zero is rejected"), Backpack->TrySplitStack(0, 0, Revision));
+	TestFalse(TEXT("Splitting the whole stack is rejected"), Backpack->TrySplitStack(0, 7, Revision));
+	TestFalse(TEXT("Splitting more than the stack is rejected"), Backpack->TrySplitStack(0, 8, Revision));
+	TestEqual(TEXT("Rejected splits leave the stack untouched"), Backpack->GetSlots()[0].Count, 7);
+
+	TestTrue(TEXT("Splitting three units is accepted"), Backpack->TrySplitStack(0, 3, Revision));
+	TestEqual(TEXT("The source keeps the remainder"), Backpack->GetSlots()[0].Count, 4);
+	TestEqual(TEXT("The split lands in the next free slot"), Backpack->GetSlots()[1].Count, 3);
+	TestEqual(TEXT("Split conserves the total"), TotalUnits(Backpack), 7);
+	TestEqual(TEXT("Split keeps the item identity"), Backpack->GetSlots()[1].ItemId, FName(TEXT("Bandage")));
+	TestEqual(TEXT("Split keeps the quality"), static_cast<int32>(Backpack->GetSlots()[1].Quality),
+		static_cast<int32>(Backpack->GetSlots()[0].Quality));
+	TestFalse(TEXT("A stale revision is rejected"), Backpack->TrySplitStack(0, 2, Revision));
+
+	// Fill every remaining slot so no free slot exists.
+	while (Backpack->GetUsedSlotCount() < Backpack->GetCapacity())
+	{
+		Backpack->TryAdd(MakeItemStack(Table, TEXT("Core"), 1));
+	}
+	const int32 FullTotal = TotalUnits(Backpack);
+	const uint32 FullRevision = Backpack->GetRevision();
+	TestFalse(TEXT("Splitting without a free slot fails"), Backpack->TrySplitStack(0, 1, FullRevision));
+	TestEqual(TEXT("A failed split changes nothing"), TotalUnits(Backpack), FullTotal);
+	TestEqual(TEXT("A failed split keeps the revision"), Backpack->GetRevision(), FullRevision);
+
+	World->DestroyWorld(false);
+	World->RemoveFromRoot();
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRuinmatesMarketTradeStateTest, "RuinMates.UI.V4.MarketTradeState",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FRuinmatesMarketTradeStateTest::RunTest(const FString& Parameters)
+{
+	FRuinmatesMarketTradeState State;
+	TestFalse(TEXT("No request is pending by default"), State.IsPending());
+	TestTrue(TEXT("The first request starts"), State.BeginRequest());
+	TestTrue(TEXT("A second request is blocked while pending"), State.IsPending());
+	TestFalse(TEXT("A second BeginRequest is refused"), State.BeginRequest());
+
+	State.SellItemId = TEXT("Bandage");
+	State.SellQuality = ERuinmatesItemQuality::Fine;
+	State.SellSlot = 3;
+	State.CompleteRequest();
+	TestFalse(TEXT("The server answer clears pending"), State.IsPending());
+	TestEqual(TEXT("The selection survives a completed request"), State.SellItemId, FName(TEXT("Bandage")));
+
+	State.BeginRequest();
+	State.Reset();
+	TestFalse(TEXT("Reset clears pending"), State.IsPending());
+	TestTrue(TEXT("Reset clears the selected item"), State.SellItemId.IsNone());
+	TestEqual(TEXT("Reset clears the selected slot"), State.SellSlot, INDEX_NONE);
+	TestTrue(TEXT("A request can start after a reset"), State.BeginRequest());
 	return true;
 }
 #endif
