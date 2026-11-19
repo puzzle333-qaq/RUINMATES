@@ -451,7 +451,9 @@ void URuinmatesTerminalItemSlot::RefreshVisual()
 			View.Name, QualityLine(View), FText::AsNumber(View.Count));
 		if (View.UnitValue > 0)
 		{
-			Tip = FText::Format(NSLOCTEXT("RuinMatesUI", "SlotTooltipValue", "{0}\n参考价值：{1}"), Tip, FText::AsNumber(View.UnitValue * View.Count));
+			// Unit price and stack value are both part of the item readout.
+			Tip = FText::Format(NSLOCTEXT("RuinMatesUI", "SlotTooltipValue", "{0}\n单价：{1}    参考价值：{2}"),
+				Tip, FText::AsNumber(View.UnitValue), FText::AsNumber(View.UnitValue * View.Count));
 		}
 		if (!View.Description.IsEmpty())
 		{
