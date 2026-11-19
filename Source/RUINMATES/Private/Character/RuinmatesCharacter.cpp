@@ -1003,6 +1003,46 @@ void ARuinmatesCharacter::Server_MoveBackpackSlot_Implementation(int32 SourceInd
 	}
 }
 
+void ARuinmatesCharacter::RequestSortBackpack(uint32 ExpectedRevision)
+{
+	if (HasAuthority())
+	{
+		Server_SortBackpack_Implementation(ExpectedRevision);
+	}
+	else
+	{
+		Server_SortBackpack(ExpectedRevision);
+	}
+}
+
+void ARuinmatesCharacter::Server_SortBackpack_Implementation(uint32 ExpectedRevision)
+{
+	if (IsValid(Backpack))
+	{
+		Backpack->TrySort(ExpectedRevision);
+	}
+}
+
+void ARuinmatesCharacter::RequestSplitStack(int32 SourceIndex, int32 Count, uint32 ExpectedRevision)
+{
+	if (HasAuthority())
+	{
+		Server_SplitStack_Implementation(SourceIndex, Count, ExpectedRevision);
+	}
+	else
+	{
+		Server_SplitStack(SourceIndex, Count, ExpectedRevision);
+	}
+}
+
+void ARuinmatesCharacter::Server_SplitStack_Implementation(int32 SourceIndex, int32 Count, uint32 ExpectedRevision)
+{
+	if (IsValid(Backpack))
+	{
+		Backpack->TrySplitStack(SourceIndex, Count, ExpectedRevision);
+	}
+}
+
 
 
 // ---------------------------------------------------------------------------
@@ -1320,6 +1360,11 @@ void ARuinmatesCharacter::CloseTradeScreen()
 	if (IsValid(TradeScreen) && TradeScreen->IsInViewport())
 	{
 		TradeScreen->RemoveFromParent();
+	}
+	// The terminal may still be open (market/backpack); it owns the input mode in that case.
+	if (IsValid(InventoryScreen) && InventoryScreen->IsInViewport())
+	{
+		return;
 	}
 	if (APlayerController* PlayerController = Cast<APlayerController>(GetController()))
 	{

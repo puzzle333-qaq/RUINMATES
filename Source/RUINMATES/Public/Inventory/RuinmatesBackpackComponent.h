@@ -71,6 +71,18 @@ public:
 		FName ExpectedTargetItemId, ERuinmatesItemQuality ExpectedTargetQuality,
 		int32 ExpectedTargetCount, uint32 ExpectedRevision) const;
 
+	/**
+	 * Server only. Merges identical stacks, orders them and pushes the gaps to the end.
+	 * Rejected when the caller's revision is stale. Emits one change for the whole pass.
+	 */
+	bool TrySort(uint32 ExpectedRevision);
+
+	/**
+	 * Server only. Splits Count units off SourceIndex into the first empty slot.
+	 * Rejected when the revision, the source stack or the free-slot requirement fails.
+	 */
+	bool TrySplitStack(int32 SourceIndex, int32 Count, uint32 ExpectedRevision);
+
 	UFUNCTION()
 	void OnRep_Slots();
 

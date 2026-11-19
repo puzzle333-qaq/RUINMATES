@@ -43,6 +43,7 @@
 #include "UI/RuinmatesTerminalItemSlot.h"
 #include "UI/RuinmatesUIStyle.h"
 #include "UI/RuinmatesTechButton.h"
+#include "UI/RuinmatesTechControls.h"
 #include "UI/RuinmatesCharacterPreview.h"
 #include "UI/RuinmatesSquadRadio.h"
 #include "UI/RuinmatesFieldHUD.h"
@@ -907,6 +908,45 @@ void URuinmatesTerminalScreen::BuildMenuLayer(UCanvasPanel* Canvas)
 	UButton* DiscardButton = MakeStyledButton(WidgetTree, TEXT("MenuDiscard"), RuinmatesUI::CloseButtonStyle(), DiscardLabel, FMargin(0.f));
 	DiscardButton->OnClicked.AddDynamic(this, &URuinmatesTerminalScreen::HandleMenuDiscard);
 	AddV(MenuColumn, Sized(WidgetTree, TEXT("MenuDiscardSize"), DiscardButton, 180.f, 48.f));
+
+	// Sort lives in the menu too: one entry point for whole-backpack actions.
+	UTextBlock* SortLabel = MakeText(WidgetTree, TEXT("MenuSortLabel"), RuinmatesUI::FontBold(18), RuinmatesUI::TextPrimary(),
+		NSLOCTEXT("RuinMatesUI", "SortBackpack", "整理背包"));
+	UButton* SortEntry = MakeStyledButton(WidgetTree, TEXT("MenuSort"), RuinmatesUI::ButtonStyle(), SortLabel, FMargin(0.f));
+	SortEntry->OnClicked.AddDynamic(this, &URuinmatesTerminalScreen::HandleSortBackpack);
+	AddV(MenuColumn, Sized(WidgetTree, TEXT("MenuSortSize"), SortEntry, 180.f, 44.f));
+
+	// Split controls: hidden until the slot menu asks for them.
+	UTextBlock* SplitLabel = MakeText(WidgetTree, TEXT("MenuSplitLabel"), RuinmatesUI::FontBold(18), RuinmatesUI::TextPrimary(),
+		NSLOCTEXT("RuinMatesUI", "SplitStack", "拆分"));
+	UButton* SplitEntry = MakeStyledButton(WidgetTree, TEXT("MenuSplit"), RuinmatesUI::ButtonStyle(), SplitLabel, FMargin(0.f));
+	SplitEntry->OnClicked.AddDynamic(this, &URuinmatesTerminalScreen::HandleMenuSplit);
+	AddV(MenuColumn, Sized(WidgetTree, TEXT("MenuSplitSize"), SplitEntry, 180.f, 44.f));
+
+	SplitPanel = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("SplitPanel"));
+	SplitPanel->SetVisibility(ESlateVisibility::Collapsed);
+	AddV(MenuColumn, SplitPanel);
+	SplitHintText = MakeText(WidgetTree, TEXT("SplitHint"), RuinmatesUI::Font(14), RuinmatesUI::TextWeak(),
+		NSLOCTEXT("RuinMatesUI", "SplitHint", "选择拆分数量"));
+	AddV(SplitPanel, SplitHintText, FMargin(0.f, 4.f, 0.f, 4.f));
+	SplitSlider = CreateWidget<URuinmatesTechSlider>(this);
+	if (SplitSlider)
+	{
+		SplitSlider->OnValueChanged.AddDynamic(this, &URuinmatesTerminalScreen::HandleSplitValueChanged);
+		AddV(SplitPanel, Sized(WidgetTree, TEXT("SplitSliderSize"), SplitSlider, 180.f, 32.f));
+	}
+	SplitCountText = MakeText(WidgetTree, TEXT("SplitCount"), RuinmatesUI::FontBold(18), RuinmatesUI::TextPrimary(), FText::GetEmpty());
+	AddV(SplitPanel, SplitCountText, FMargin(0.f, 2.f, 0.f, 6.f));
+	UTextBlock* SplitConfirmLabel = MakeText(WidgetTree, TEXT("SplitConfirmLabel"), RuinmatesUI::FontBold(16), RuinmatesUI::TextPrimary(),
+		NSLOCTEXT("RuinMatesUI", "SplitConfirm", "确认拆分"));
+	UButton* SplitConfirm = MakeStyledButton(WidgetTree, TEXT("SplitConfirm"), RuinmatesUI::ButtonStyle(), SplitConfirmLabel, FMargin(0.f));
+	SplitConfirm->OnClicked.AddDynamic(this, &URuinmatesTerminalScreen::HandleSplitConfirm);
+	AddV(SplitPanel, Sized(WidgetTree, TEXT("SplitConfirmSize"), SplitConfirm, 180.f, 44.f));
+	UTextBlock* SplitCancelLabel = MakeText(WidgetTree, TEXT("SplitCancelLabel"), RuinmatesUI::FontBold(16), RuinmatesUI::TextWeak(),
+		NSLOCTEXT("RuinMatesUI", "SplitCancel", "取消"));
+	UButton* SplitCancel = MakeStyledButton(WidgetTree, TEXT("SplitCancel"), RuinmatesUI::CloseButtonStyle(), SplitCancelLabel, FMargin(0.f));
+	SplitCancel->OnClicked.AddDynamic(this, &URuinmatesTerminalScreen::HandleSplitCancel);
+	AddV(SplitPanel, Sized(WidgetTree, TEXT("SplitCancelSize"), SplitCancel, 180.f, 40.f));
 }
 
 void URuinmatesTerminalScreen::OpenFor(ARuinmatesCharacter* InCharacter, ARuinmatesLootContainer* InContainer)
@@ -1212,6 +1252,15 @@ void URuinmatesTerminalScreen::HandleSlotClicked(int32 StableIndex)
 		View.bSelected = View.StableIndex == StableIndex && View.State == ERuinmatesTerminalSlotState::Revealed;
 	}
 	RebuildSlots();
+	if (bMarketLive)
+	{
+		// The live market owns selection: a click on the left backpack picks a sell stack.
+		if (bVisualSell)
+		{
+			HandleMarketSelected(StableIndex);
+		}
+		return;
+	}
 	if (!bLive && VisualMode == 3 && bVisualSell)
 	{
 		VisualSelected = StableIndex;
@@ -1227,6 +1276,99 @@ void URuinmatesTerminalScreen::HandleSlotRightClicked(int32 StableIndex)
 		return;
 	}
 	OpenSlotMenu(StableIndex);
+}
+
+void URuinmatesTerminalScreen::HandleSortBackpack()
+{
+	CloseSlotMenu();
+	ARuinmatesCharacter* Character = LiveCharacter.Get();
+	URuinmatesBackpackComponent* Backpack = Character ? Character->GetBackpack() : nullptr;
+	if (!bLive || !Backpack)
+	{
+		return;
+	}
+	// Server merges, orders and pushes gaps to the end; the revision rejects stale requests.
+	Character->RequestSortBackpack(Backpack->GetRevision());
+}
+
+void URuinmatesTerminalScreen::HandleMenuSplit()
+{
+	ARuinmatesCharacter* Character = LiveCharacter.Get();
+	const FRuinmatesTerminalSlotView* Match = Page.Backpack.FindByPredicate(
+		[this](const FRuinmatesTerminalSlotView& View)
+		{
+			return View.StableIndex == MenuStableIndex && View.State == ERuinmatesTerminalSlotState::Revealed;
+		});
+	if (!Character || !Match || !SplitPanel)
+	{
+		return;
+	}
+
+	SplitPanel->SetVisibility(ESlateVisibility::Visible);
+	if (Match->Count <= 1)
+	{
+		SplitMaxCount = 0;
+		if (SplitHintText) SplitHintText->SetText(NSLOCTEXT("RuinMatesUI", "SplitSingle", "数量为 1 的物品无法拆分"));
+		if (SplitSlider) SplitSlider->SetVisibility(ESlateVisibility::Collapsed);
+		if (SplitCountText) SplitCountText->SetText(FText::GetEmpty());
+		return;
+	}
+
+	SplitMaxCount = Match->Count - 1;
+	if (SplitSlider)
+	{
+		SplitSlider->SetVisibility(ESlateVisibility::Visible);
+		SplitSlider->SetValueRange(1.f, static_cast<float>(SplitMaxCount), 1.f);
+	}
+	if (SplitHintText)
+	{
+		SplitHintText->SetText(FText::Format(NSLOCTEXT("RuinMatesUI", "SplitRange", "拆分数量 1 - {0}"),
+			FText::AsNumber(SplitMaxCount)));
+	}
+	if (SplitCountText) SplitCountText->SetText(FText::Format(NSLOCTEXT("RuinMatesUI", "SplitCountFmt", "拆分 {0}"),
+		FText::AsNumber(1)));
+}
+
+void URuinmatesTerminalScreen::HandleSplitValueChanged(float Value)
+{
+	if (!SplitCountText || SplitMaxCount <= 0)
+	{
+		return;
+	}
+	const int32 Quantity = FMath::Clamp(FMath::RoundToInt(Value), 1, SplitMaxCount);
+	SplitCountText->SetText(FText::Format(NSLOCTEXT("RuinMatesUI", "SplitCountFmt", "拆分 {0}"), FText::AsNumber(Quantity)));
+}
+
+void URuinmatesTerminalScreen::HandleSplitConfirm()
+{
+	ARuinmatesCharacter* Character = LiveCharacter.Get();
+	URuinmatesBackpackComponent* Backpack = Character ? Character->GetBackpack() : nullptr;
+	if (!Character || !Backpack || MenuStableIndex == INDEX_NONE || SplitMaxCount <= 0)
+	{
+		return;
+	}
+
+	const int32 Quantity = FMath::Clamp(
+		FMath::RoundToInt(SplitSlider ? SplitSlider->GetValue() : 1.f), 1, FMath::Max(1, SplitMaxCount));
+	const bool bHasEmptySlot = Backpack->GetSlots().ContainsByPredicate(
+		[](const FRuinmatesItemStack& Stack) { return Stack.IsEmpty(); });
+	if (!bHasEmptySlot)
+	{
+		if (SplitHintText)
+		{
+			SplitHintText->SetText(NSLOCTEXT("RuinMatesUI", "SplitNoRoom", "背包已满，无法拆分"));
+		}
+		return;
+	}
+
+	Character->RequestSplitStack(MenuStableIndex, Quantity, Backpack->GetRevision());
+	CloseSlotMenu();
+}
+
+void URuinmatesTerminalScreen::HandleSplitCancel()
+{
+	// Cancel never touches the backpack.
+	CloseSlotMenu();
 }
 
 void URuinmatesTerminalScreen::OpenSlotMenu(int32 StableIndex)
@@ -1249,6 +1391,8 @@ void URuinmatesTerminalScreen::OpenSlotMenu(int32 StableIndex)
 
 	MenuStableIndex = StableIndex;
 	MenuTitle->SetText(Match->Name);
+	if (SplitPanel) SplitPanel->SetVisibility(ESlateVisibility::Collapsed);
+	SplitMaxCount = 0;
 	MenuDismissButton->SetVisibility(ESlateVisibility::Visible);
 	ContextMenu->SetVisibility(ESlateVisibility::Visible);
 

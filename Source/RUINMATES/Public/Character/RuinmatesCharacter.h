@@ -95,6 +95,18 @@ public:
 		FName ExpectedTargetItemId, ERuinmatesItemQuality ExpectedTargetQuality,
 		int32 ExpectedTargetCount, uint32 ExpectedRevision);
 
+	/** Client entry: asks the server to combine and order the backpack (revision guarded). */
+	void RequestSortBackpack(uint32 ExpectedRevision);
+
+	UFUNCTION(Server, Reliable)
+	void Server_SortBackpack(uint32 ExpectedRevision);
+
+	/** Client entry: asks the server to split Count units off a stack into the first free slot. */
+	void RequestSplitStack(int32 SourceIndex, int32 Count, uint32 ExpectedRevision);
+
+	UFUNCTION(Server, Reliable)
+	void Server_SplitStack(int32 SourceIndex, int32 Count, uint32 ExpectedRevision);
+
 	UFUNCTION(BlueprintPure, Category = "RuinMates|Weapon")
 	ABaseWeapon* GetEquippedWeapon() const { return EquippedWeapon; }
 

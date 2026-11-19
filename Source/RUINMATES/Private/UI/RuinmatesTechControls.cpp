@@ -56,9 +56,25 @@ void URuinmatesTechSlider::SetValue(float Value)
 	ValueChanged(Value);
 }
 
+void URuinmatesTechSlider::SetValueRange(float Min, float Max, float Value)
+{
+	MinValue = Min;
+	MaxValue = FMath::Max(Min + 1.f, Max);
+	const float Range = FMath::Max(KINDA_SMALL_NUMBER, MaxValue - MinValue);
+	SetValue(FMath::Clamp((Value - MinValue) / Range, 0.f, 1.f));
+}
+
+float URuinmatesTechSlider::GetValue() const
+{
+	const float Normalized = Input ? Input->GetValue() : 0.f;
+	const float Raw = MinValue + FMath::Clamp(Normalized, 0.f, 1.f) * (MaxValue - MinValue);
+	return FMath::Clamp(FMath::RoundToFloat(Raw), MinValue, MaxValue);
+}
+
 void URuinmatesTechSlider::ValueChanged(float Value)
 {
 	if (Fill) Fill->SetPercent(FMath::Clamp(Value, 0.f, 1.f));
+	OnValueChanged.Broadcast(MinValue + FMath::Clamp(Value, 0.f, 1.f) * (MaxValue - MinValue));
 }
 
 void URuinmatesTechToggle::NativeOnInitialized()

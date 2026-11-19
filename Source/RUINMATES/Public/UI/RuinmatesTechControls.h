@@ -8,6 +8,8 @@ class UProgressBar;
 class UButton;
 class UImage;
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FRuinmatesTechSliderEvent, float, Value);
+
 /** Native slider input with independent V4 track, masked fill and thumb. */
 UCLASS()
 class RUINMATES_API URuinmatesTechSlider : public UUserWidget
@@ -16,12 +18,24 @@ class RUINMATES_API URuinmatesTechSlider : public UUserWidget
 public:
 	/** Updates the native slider and clipped fill together. */
 	void SetValue(float Value);
+
+	/** Maps a real value range onto the normalised track (used by the split dialog). */
+	void SetValueRange(float Min, float Max, float Value);
+
+	/** Current value in the mapped range, rounded to whole units. */
+	float GetValue() const;
+
+	/** Broadcast whenever the mapped value changes. */
+	UPROPERTY(BlueprintAssignable, Category = "RuinMates|UI")
+	FRuinmatesTechSliderEvent OnValueChanged;
 protected:
 	virtual void NativeOnInitialized() override;
 private:
 	UFUNCTION() void ValueChanged(float Value);
 	UPROPERTY() TObjectPtr<USlider> Input;
 	UPROPERTY() TObjectPtr<UProgressBar> Fill;
+	float MinValue = 0.f;
+	float MaxValue = 1.f;
 };
 
 /** Focusable boolean control with a fixed track and interruptible 150ms thumb motion. */

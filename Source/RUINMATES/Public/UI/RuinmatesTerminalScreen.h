@@ -24,6 +24,8 @@ class ARuinmatesLootContainer;
 class ARuinmatesMerchant;
 class URuinmatesCharacterPreview;
 class URuinmatesSquadRadio;
+class URuinmatesTechSlider;
+class URuinmatesTechButton;
 
 // Shared terminal. The left backpack stays put; the right switcher shows the character or a container.
 // Layout: world dim -> metal device shell (9-slice) -> header -> tab bar -> body (backpack | right)
@@ -131,6 +133,15 @@ protected:
 
 	UFUNCTION()
 	void HandleSlotClicked(int32 StableIndex);
+
+	/** Server-authorised backpack sort; the client only sends its revision. */
+	UFUNCTION() void HandleSortBackpack();
+
+	/** Opens the split controls for the right-clicked stack. */
+	UFUNCTION() void HandleMenuSplit();
+	UFUNCTION() void HandleSplitConfirm();
+	UFUNCTION() void HandleSplitCancel();
+	UFUNCTION() void HandleSplitValueChanged(float Value);
 
 	// Right click on a revealed backpack stack opens the small action menu.
 	UFUNCTION()
@@ -318,6 +329,12 @@ protected:
 	UPROPERTY() TObjectPtr<UWidget> MarketGoods;
 	UPROPERTY() TObjectPtr<UTextBlock> SellPrompt;
 	UPROPERTY() TObjectPtr<UTextBlock> CategoryEmptyHint;
+	UPROPERTY() TObjectPtr<URuinmatesTechButton> SortButton;
+	UPROPERTY() TObjectPtr<UVerticalBox> SplitPanel;
+	UPROPERTY() TObjectPtr<URuinmatesTechSlider> SplitSlider;
+	UPROPERTY() TObjectPtr<UTextBlock> SplitCountText;
+	UPROPERTY() TObjectPtr<UTextBlock> SplitHintText;
+	int32 SplitMaxCount = 0;
 	UPROPERTY() TObjectPtr<URuinmatesCharacterPreview> CharacterPreview;
 	UPROPERTY() TObjectPtr<URuinmatesSquadRadio> SquadRadio;
 
@@ -331,6 +348,9 @@ protected:
 
 	TWeakObjectPtr<ARuinmatesMerchant> LiveMerchant;
 	bool bMarketLive = false;
+
+	/** Pending request flag + selected sell-stack identity, re-checked on every refresh. */
+	FRuinmatesMarketTradeState TradeState;
 
 	int32 VisualMode = 0;
 	int32 VisualQuantity = 1;

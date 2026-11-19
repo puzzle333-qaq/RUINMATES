@@ -355,3 +355,133 @@ void URuinmatesBackpackComponent::MarkChanged()
 	++Revision;
 	OnChanged.Broadcast();
 }
+
+bool URuinmatesBackpackComponent::TrySort(uint32 ExpectedRevision)
+{
+	if (!GetOwner() || !GetOwner()->HasAuthority() || ExpectedRevision != Revision)
+	{
+		return false;
+	}
+
+	// Merge identical stacks (same id, quality and max stack) before ordering.
+	TArray<FRuinmatesItemStack> Merged;
+	int32 TotalBefore = 0;
+	for (const FRuinmatesItemStack& Slot : Slots)
+	{
+		if (Slot.IsEmpty())
+		{
+			continue;
+		}
+		TotalBefore += Slot.Count;
+		FRuinmatesItemStack* Existing = Merged.FindByPredicate([&Slot](const FRuinmatesItemStack& Other)
+		{
+			return Other.ItemId == Slot.ItemId && Other.Quality == Slot.Quality && Other.MaxStack == Slot.MaxStack;
+		});
+		if (Existing)
+		{
+			Existing->Count += Slot.Count;
+		}
+		else
+		{
+			Merged.Add(Slot);
+		}
+	}
+
+	// Split merged totals back into legal stacks; a single pass only needs one write below.
+	TArray<FRuinmatesItemStack> Result;
+	for (const FRuinmatesItemStack& Item : Merged)
+	{
+		const int32 StackMax = FMath::Max(1, Item.MaxStack);
+		for (int32 Remaining = Item.Count; Remaining > 0;)
+		{
+			FRuinmatesItemStack Stack = Item;
+			Stack.Count = FMath::Min(Remaining, StackMax);
+			Remaining -= Stack.Count;
+			Result.Add(Stack);
+		}
+	}
+
+	// Category, then quality (high first), then ItemId so equal items keep a stable order.
+	const URuinmatesItemDatabaseSubsystem* Database = URuinmatesItemDatabaseSubsystem::Get(this);
+	auto CategoryOf = [Database](const FRuinmatesItemStack& Stack)
+	{
+		if (Database && Database->IsLoaded())
+		{
+			if (const FRuinmatesItemRow* Row = Database->FindItemDefinition(Stack.ItemId))
+			{
+				return static_cast<int32>(Row->Category);
+			}
+		}
+		return Stack.bUpgradeMaterial ? static_cast<int32>(ERuinmatesItemCategory::Material)
+			: static_cast<int32>(ERuinmatesItemCategory::Consumable);
+	};
+	Result.Sort([&CategoryOf](const FRuinmatesItemStack& A, const FRuinmatesItemStack& B)
+	{
+		const int32 CategoryA = CategoryOf(A);
+		const int32 CategoryB = CategoryOf(B);
+		if (CategoryA != CategoryB)
+		{
+			return CategoryA < CategoryB;
+		}
+		if (A.Quality != B.Quality)
+		{
+			return static_cast<int32>(A.Quality) > static_cast<int32>(B.Quality);
+		}
+		return A.ItemId.LexicalLess(B.ItemId);
+	});
+
+	// Conservation and capacity guards: a sort never creates or destroys items or slots.
+	int32 TotalAfter = 0;
+	for (const FRuinmatesItemStack& Stack : Result)
+	{
+		TotalAfter += Stack.Count;
+	}
+	if (TotalAfter != TotalBefore || Result.Num() > Slots.Num())
+	{
+		ensureMsgf(false, TEXT("Sort changed the item total (%d -> %d) or overflowed the slot array"), TotalBefore, TotalAfter);
+		return false;
+	}
+
+	for (int32 Index = 0; Index < Slots.Num(); ++Index)
+	{
+		Slots[Index] = Result.IsValidIndex(Index) ? Result[Index] : FRuinmatesItemStack();
+	}
+	MarkChanged();
+	return true;
+}
+
+bool URuinmatesBackpackComponent::TrySplitStack(int32 SourceIndex, int32 Count, uint32 ExpectedRevision)
+{
+	if (!GetOwner() || !GetOwner()->HasAuthority() || ExpectedRevision != Revision || !Slots.IsValidIndex(SourceIndex))
+	{
+		return false;
+	}
+
+	const FRuinmatesItemStack& Source = Slots[SourceIndex];
+	if (Source.IsEmpty() || Count <= 0 || Count >= Source.Count)
+	{
+		return false;
+	}
+
+	int32 EmptyIndex = INDEX_NONE;
+	for (int32 Index = 0; Index < Slots.Num(); ++Index)
+	{
+		if (Slots[Index].IsEmpty())
+		{
+			EmptyIndex = Index;
+			break;
+		}
+	}
+	if (EmptyIndex == INDEX_NONE)
+	{
+		return false;
+	}
+
+	// Copy every field (id, quality, description, value, flags) so the split keeps all properties.
+	FRuinmatesItemStack Split = Source;
+	Split.Count = Count;
+	Slots[SourceIndex].Count -= Count;
+	Slots[EmptyIndex] = Split;
+	MarkChanged();
+	return true;
+}
