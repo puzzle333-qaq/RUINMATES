@@ -1023,28 +1023,122 @@ void ARuinmatesCharacter::Server_SortBackpack_Implementation(uint32 ExpectedRevi
 	}
 }
 
-void ARuinmatesCharacter::RequestSplitStack(int32 SourceIndex, int32 Count, uint32 ExpectedRevision)
+void ARuinmatesCharacter::RequestSplitStack(int32 SourceIndex, int32 Count, FName ExpectedItemId,
+	ERuinmatesItemQuality ExpectedQuality, int32 ExpectedSourceCount, uint32 ExpectedRevision)
 {
 	if (HasAuthority())
 	{
-		Server_SplitStack_Implementation(SourceIndex, Count, ExpectedRevision);
+		Server_SplitStack_Implementation(SourceIndex, Count, ExpectedItemId, ExpectedQuality, ExpectedSourceCount, ExpectedRevision);
 	}
 	else
 	{
-		Server_SplitStack(SourceIndex, Count, ExpectedRevision);
+		Server_SplitStack(SourceIndex, Count, ExpectedItemId, ExpectedQuality, ExpectedSourceCount, ExpectedRevision);
 	}
 }
 
-void ARuinmatesCharacter::Server_SplitStack_Implementation(int32 SourceIndex, int32 Count, uint32 ExpectedRevision)
+void ARuinmatesCharacter::Server_SplitStack_Implementation(int32 SourceIndex, int32 Count, FName ExpectedItemId,
+	ERuinmatesItemQuality ExpectedQuality, int32 ExpectedSourceCount, uint32 ExpectedRevision)
 {
 	if (IsValid(Backpack))
 	{
-		Backpack->TrySplitStack(SourceIndex, Count, ExpectedRevision);
+		Backpack->TrySplitStack(SourceIndex, Count, ExpectedItemId, ExpectedQuality, ExpectedSourceCount, ExpectedRevision);
 	}
 }
 
+void ARuinmatesCharacter::RequestUseItem(int32 SlotIndex, FName ExpectedItemId, ERuinmatesItemQuality ExpectedQuality,
+	int32 ExpectedSourceCount, uint32 ExpectedRevision)
+{
+	if (HasAuthority())
+	{
+		Server_UseItem_Implementation(SlotIndex, ExpectedItemId, ExpectedQuality, ExpectedSourceCount, ExpectedRevision);
+	}
+	else
+	{
+		Server_UseItem(SlotIndex, ExpectedItemId, ExpectedQuality, ExpectedSourceCount, ExpectedRevision);
+	}
+}
 
+void ARuinmatesCharacter::Server_UseItem_Implementation(int32 SlotIndex, FName ExpectedItemId,
+	ERuinmatesItemQuality ExpectedQuality, int32 ExpectedSourceCount, uint32 ExpectedRevision)
+{
+	TryUseBackpackItem(SlotIndex, ExpectedItemId, ExpectedQuality, ExpectedSourceCount, ExpectedRevision);
+}
 
+bool ARuinmatesCharacter::TryUseBackpackItem(int32 SlotIndex, FName ExpectedItemId,
+	ERuinmatesItemQuality ExpectedQuality, int32 ExpectedSourceCount, uint32 ExpectedRevision)
+{
+	if (!IsValid(Backpack) || !Backpack->GetSlots().IsValidIndex(SlotIndex))
+	{
+		return false;
+	}
+
+	// The effect is derived from the server copy of the stack, never from client-sent effect data.
+	const FRuinmatesItemStack Stack = Backpack->GetSlots()[SlotIndex];
+	if (Stack.IsEmpty() || Backpack->GetRevision() != ExpectedRevision
+		|| Stack.ItemId != ExpectedItemId || Stack.Quality != ExpectedQuality
+		|| Stack.Count != ExpectedSourceCount)
+	{
+		return false;
+	}
+
+	// The effect comes from the server copy of the stack (normalized from DT_Items on add/pickup);
+	// the database is only a fallback for stacks created before the fields existed.
+	ERuinmatesItemUseEffect Effect = Stack.UseEffect;
+	float UseAmount = Stack.UseAmount;
+	if (Effect == ERuinmatesItemUseEffect::None)
+	{
+		const URuinmatesItemDatabaseSubsystem* Database = URuinmatesItemDatabaseSubsystem::Get(this);
+		const FRuinmatesItemRow* Row = Database ? Database->FindItemDefinition(Stack.ItemId) : nullptr;
+		if (!Row)
+		{
+			return false;
+		}
+		Effect = Row->UseEffect;
+		UseAmount = Row->UseAmount;
+	}
+	if (Effect == ERuinmatesItemUseEffect::None || UseAmount <= 0.f)
+	{
+		return false;
+	}
+
+	UStatsComponent* Health = UStatsComponent::FindStatsComponent(this);
+	if (Health && (Health->IsDead() || !Health->CanMutateStats()))
+	{
+		return false;
+	}
+
+	if (Effect == ERuinmatesItemUseEffect::Heal)
+	{
+		// A full-health target is a rejected use, not a wasted item.
+		if (!Health || Health->GetHealth() >= Health->GetMaxHealth())
+		{
+			return false;
+		}
+		if (!Health->ChangeHealthByAmount(UseAmount, this))
+		{
+			return false;
+		}
+	}
+	else if (Effect == ERuinmatesItemUseEffect::Ammo)
+	{
+		ABaseWeapon* Weapon = GetEquippedWeapon();
+		if (!IsValid(Weapon) || !Weapon->UsesAmmo())
+		{
+			return false;
+		}
+		if (Weapon->AddCarriedAmmo(FMath::RoundToInt(UseAmount)) <= 0)
+		{
+			return false;
+		}
+	}
+	else
+	{
+		return false;
+	}
+
+	// Consume one unit only after the effect applied; the stack itself is verified above.
+	return Backpack->RemoveItemAt(SlotIndex, 1);
+}
 // ---------------------------------------------------------------------------
 // Trading
 // ---------------------------------------------------------------------------
@@ -1151,15 +1245,16 @@ void ARuinmatesCharacter::RequestBuyItem(FName ItemId, int32 Count)
 	}
 }
 
-void ARuinmatesCharacter::RequestSellItem(int32 SlotIndex, int32 Count)
+void ARuinmatesCharacter::RequestSellItem(int32 SlotIndex, int32 Count, FName ExpectedItemId,
+	ERuinmatesItemQuality ExpectedQuality, int32 ExpectedSourceCount, uint32 ExpectedRevision)
 {
 	if (HasAuthority())
 	{
-		Server_SellItem_Implementation(SlotIndex, Count);
+		Server_SellItem_Implementation(SlotIndex, Count, ExpectedItemId, ExpectedQuality, ExpectedSourceCount, ExpectedRevision);
 	}
 	else
 	{
-		Server_SellItem(SlotIndex, Count);
+		Server_SellItem(SlotIndex, Count, ExpectedItemId, ExpectedQuality, ExpectedSourceCount, ExpectedRevision);
 	}
 }
 
@@ -1231,7 +1326,8 @@ void ARuinmatesCharacter::Server_BuyItem_Implementation(FName ItemId, int32 Coun
 		Row->DisplayName, FText::AsNumber(Count), FText::AsNumber(TotalPrice)));
 }
 
-void ARuinmatesCharacter::Server_SellItem_Implementation(int32 SlotIndex, int32 Count)
+void ARuinmatesCharacter::Server_SellItem_Implementation(int32 SlotIndex, int32 Count, FName ExpectedItemId,
+	ERuinmatesItemQuality ExpectedQuality, int32 ExpectedSourceCount, uint32 ExpectedRevision)
 {
 	ARuinmatesMerchant* Merchant = nullptr;
 	if (!ValidateTradeState(Merchant))
@@ -1250,11 +1346,14 @@ void ARuinmatesCharacter::Server_SellItem_Implementation(int32 SlotIndex, int32 
 		return;
 	}
 
-	// Read the stack on the server; item id and quality are never taken from the client.
+	// Read the stack on the server; item id, quality, count and revision must match what the client
+	// rendered, so a stale sale can never move a different item.
 	const FRuinmatesItemStack Stack = Backpack->GetSlots()[SlotIndex];
-	if (Stack.IsEmpty())
+	if (Stack.IsEmpty() || Backpack->GetRevision() != ExpectedRevision
+		|| Stack.ItemId != ExpectedItemId || Stack.Quality != ExpectedQuality
+		|| Stack.Count != ExpectedSourceCount)
 	{
-		Client_TradeResult(false, NSLOCTEXT("RuinMates", "TradeBadSlot", "格子无效"));
+		Client_TradeResult(false, NSLOCTEXT("RuinMates", "TradeStaleStack", "物品已变化，请重试"));
 		return;
 	}
 

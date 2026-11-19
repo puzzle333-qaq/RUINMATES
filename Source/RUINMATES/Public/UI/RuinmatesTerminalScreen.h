@@ -139,6 +139,7 @@ protected:
 
 	/** Opens the split controls for the right-clicked stack. */
 	UFUNCTION() void HandleMenuSplit();
+	UFUNCTION() void HandleMenuUse();
 	UFUNCTION() void HandleSplitConfirm();
 	UFUNCTION() void HandleSplitCancel();
 	UFUNCTION() void HandleSplitValueChanged(float Value);
@@ -330,11 +331,16 @@ protected:
 	UPROPERTY() TObjectPtr<UTextBlock> SellPrompt;
 	UPROPERTY() TObjectPtr<UTextBlock> CategoryEmptyHint;
 	UPROPERTY() TObjectPtr<URuinmatesTechButton> SortButton;
+	UPROPERTY() TObjectPtr<UButton> MenuUseButton;
 	UPROPERTY() TObjectPtr<UVerticalBox> SplitPanel;
 	UPROPERTY() TObjectPtr<URuinmatesTechSlider> SplitSlider;
 	UPROPERTY() TObjectPtr<UTextBlock> SplitCountText;
 	UPROPERTY() TObjectPtr<UTextBlock> SplitHintText;
 	int32 SplitMaxCount = 0;
+	FName SplitItemId;
+	ERuinmatesItemQuality SplitQuality = ERuinmatesItemQuality::Common;
+	int32 SplitSourceCount = 0;
+	uint32 SplitRevision = 0;
 	UPROPERTY() TObjectPtr<URuinmatesCharacterPreview> CharacterPreview;
 	UPROPERTY() TObjectPtr<URuinmatesSquadRadio> SquadRadio;
 

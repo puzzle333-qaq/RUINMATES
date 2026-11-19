@@ -909,6 +909,13 @@ void URuinmatesTerminalScreen::BuildMenuLayer(UCanvasPanel* Canvas)
 	DiscardButton->OnClicked.AddDynamic(this, &URuinmatesTerminalScreen::HandleMenuDiscard);
 	AddV(MenuColumn, Sized(WidgetTree, TEXT("MenuDiscardSize"), DiscardButton, 180.f, 48.f));
 
+	// Use is only enabled for items whose row configures a use effect.
+	UTextBlock* UseLabel = MakeText(WidgetTree, TEXT("MenuUseLabel"), RuinmatesUI::FontBold(18), RuinmatesUI::TextPrimary(),
+		NSLOCTEXT("RuinMatesUI", "UseItem", "使用"));
+	MenuUseButton = MakeStyledButton(WidgetTree, TEXT("MenuUse"), RuinmatesUI::ButtonStyle(), UseLabel, FMargin(0.f));
+	MenuUseButton->OnClicked.AddDynamic(this, &URuinmatesTerminalScreen::HandleMenuUse);
+	AddV(MenuColumn, Sized(WidgetTree, TEXT("MenuUseSize"), MenuUseButton, 180.f, 44.f));
+
 	// Sort lives in the menu too: one entry point for whole-backpack actions.
 	UTextBlock* SortLabel = MakeText(WidgetTree, TEXT("MenuSortLabel"), RuinmatesUI::FontBold(18), RuinmatesUI::TextPrimary(),
 		NSLOCTEXT("RuinMatesUI", "SortBackpack", "整理背包"));
@@ -1280,10 +1287,25 @@ void URuinmatesTerminalScreen::HandleSlotRightClicked(int32 StableIndex)
 
 void URuinmatesTerminalScreen::HandleSortBackpack()
 {
+	// Sort is a backpack action and stays available on the market page too.
+	if (!bLive && !bMarketLive)
+	{
+		return;
+	}
 	CloseSlotMenu();
+	// The slot order changes, so any remembered selection is no longer meaningful.
+	SelectedStableIndex = INDEX_NONE;
+	for (FRuinmatesTerminalSlotView& View : Page.Backpack)
+	{
+		View.bSelected = false;
+	}
+	if (SortButton)
+	{
+		SortButton->SetIsEnabled(false);
+	}
 	ARuinmatesCharacter* Character = LiveCharacter.Get();
 	URuinmatesBackpackComponent* Backpack = Character ? Character->GetBackpack() : nullptr;
-	if (!bLive || !Backpack)
+	if (!Backpack)
 	{
 		return;
 	}
@@ -1315,6 +1337,11 @@ void URuinmatesTerminalScreen::HandleMenuSplit()
 	}
 
 	SplitMaxCount = Match->Count - 1;
+	// Snapshot the exact stack: the server re-checks id, quality, count and revision.
+	SplitItemId = Match->ItemId;
+	SplitQuality = Match->Quality;
+	SplitSourceCount = Match->Count;
+	SplitRevision = Character->GetBackpack() ? Character->GetBackpack()->GetRevision() : 0;
 	if (SplitSlider)
 	{
 		SplitSlider->SetVisibility(ESlateVisibility::Visible);
@@ -1361,13 +1388,45 @@ void URuinmatesTerminalScreen::HandleSplitConfirm()
 		return;
 	}
 
-	Character->RequestSplitStack(MenuStableIndex, Quantity, Backpack->GetRevision());
+	// Re-check the snapshot through the rendered view before sending; the server checks it again.
+	const FRuinmatesTerminalSlotView* Current = Page.Backpack.FindByPredicate(
+		[this](const FRuinmatesTerminalSlotView& View)
+		{
+			return View.StableIndex == MenuStableIndex && View.State == ERuinmatesTerminalSlotState::Revealed;
+		});
+	if (!Current || Current->ItemId != SplitItemId || Current->Quality != SplitQuality
+		|| Current->Count != SplitSourceCount)
+	{
+		CloseSlotMenu();
+		return;
+	}
+	Character->RequestSplitStack(MenuStableIndex, Quantity, SplitItemId, SplitQuality, SplitSourceCount, SplitRevision);
 	CloseSlotMenu();
 }
 
 void URuinmatesTerminalScreen::HandleSplitCancel()
 {
 	// Cancel never touches the backpack.
+	CloseSlotMenu();
+}
+
+void URuinmatesTerminalScreen::HandleMenuUse()
+{
+	ARuinmatesCharacter* Character = LiveCharacter.Get();
+	URuinmatesBackpackComponent* Backpack = Character ? Character->GetBackpack() : nullptr;
+	const FRuinmatesTerminalSlotView* Match = Page.Backpack.FindByPredicate(
+		[this](const FRuinmatesTerminalSlotView& View)
+		{
+			return View.StableIndex == MenuStableIndex && View.State == ERuinmatesTerminalSlotState::Revealed;
+		});
+	if (!Character || !Backpack || !Match || Match->UseEffect == ERuinmatesItemUseEffect::None)
+	{
+		CloseSlotMenu();
+		return;
+	}
+
+	// Snapshot only; the server reads the effect, amount and target from its own state.
+	Character->RequestUseItem(MenuStableIndex, Match->ItemId, Match->Quality, Match->Count, Backpack->GetRevision());
 	CloseSlotMenu();
 }
 
@@ -1393,6 +1452,11 @@ void URuinmatesTerminalScreen::OpenSlotMenu(int32 StableIndex)
 	MenuTitle->SetText(Match->Name);
 	if (SplitPanel) SplitPanel->SetVisibility(ESlateVisibility::Collapsed);
 	SplitMaxCount = 0;
+	// Only rows with a configured use effect offer the action; everything else keeps the old menu.
+	if (MenuUseButton)
+	{
+		MenuUseButton->SetIsEnabled(Match->UseEffect != ERuinmatesItemUseEffect::None && Match->Count > 0);
+	}
 	MenuDismissButton->SetVisibility(ESlateVisibility::Visible);
 	ContextMenu->SetVisibility(ESlateVisibility::Visible);
 
@@ -1405,7 +1469,9 @@ void URuinmatesTerminalScreen::OpenSlotMenu(int32 StableIndex)
 	{
 		const FVector2D ViewSize = UWidgetLayoutLibrary::GetViewportSize(this);
 		const float MaxX = FMath::Max(8.f, ViewSize.X - 300.f);
-		const float MaxY = FMath::Max(8.f, ViewSize.Y - 170.f);
+		// The split panel makes the menu taller; reserve its height so it stays on screen.
+		const float ReservedHeight = SplitPanel && SplitPanel->GetVisibility() != ESlateVisibility::Collapsed ? 360.f : 170.f;
+		const float MaxY = FMath::Max(8.f, ViewSize.Y - ReservedHeight);
 		MenuPosition = FVector2D(
 			FMath::Clamp(MouseX, 8.f, MaxX),
 			FMath::Clamp(MouseY, 8.f, MaxY));
@@ -1548,6 +1614,8 @@ void URuinmatesTerminalScreen::MakeSlotView(const FRuinmatesItemStack& Stack, in
 	OutView.Quality = Stack.Quality;
 	OutView.Description = Stack.Description;
 	OutView.UnitValue = Stack.UnitValue;
+	OutView.UseEffect = Stack.UseEffect;
+	OutView.UseAmount = Stack.UseAmount;
 	FillFromDatabase(this, Stack, OutView);
 }
 
@@ -1596,6 +1664,8 @@ void URuinmatesTerminalScreen::RefreshFromLive()
 			View.Name = Stack.DisplayName;
 			View.Count = Stack.Count;
 			View.Quality = Stack.Quality;
+			View.UseEffect = Stack.UseEffect;
+			View.UseAmount = Stack.UseAmount;
 			FillFromDatabase(this, Stack, View);
 			View.bSelected = Index == SelectedStableIndex;
 			bSelectionStillValid |= View.bSelected;
@@ -1659,6 +1729,8 @@ void URuinmatesTerminalScreen::RefreshFromLive()
 				View.Name = Stack.DisplayName;
 				View.Count = Stack.Count;
 				View.Quality = Stack.Quality;
+				View.UseEffect = Stack.UseEffect;
+				View.UseAmount = Stack.UseAmount;
 				FillFromDatabase(this, Stack, View);
 			}
 			Next.RightSlots.Add(View);
@@ -1689,6 +1761,10 @@ void URuinmatesTerminalScreen::RefreshFromLive()
 	Page = Next;
 	ApplyPageText();
 	RebuildSlots();
+	if (SortButton)
+	{
+		SortButton->SetIsEnabled(Page.Used > 0);
+	}
 }
 
 void URuinmatesTerminalScreen::ClosePreview()

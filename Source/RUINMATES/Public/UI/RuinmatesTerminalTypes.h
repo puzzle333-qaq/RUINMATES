@@ -62,6 +62,13 @@ struct FRuinmatesTerminalSlotView
 	UPROPERTY()
 	int32 UnitValue = 0;
 
+	/** Copied from the stack so the context menu can enable "use" without a database lookup. */
+	UPROPERTY()
+	ERuinmatesItemUseEffect UseEffect = ERuinmatesItemUseEffect::None;
+
+	UPROPERTY()
+	float UseAmount = 0.f;
+
 	/** Legacy dimming flag; active category filtering now omits non-matching cells. */
 	UPROPERTY()
 	bool bDimmed = false;

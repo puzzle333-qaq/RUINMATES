@@ -887,7 +887,14 @@ void URuinmatesTerminalScreen::HandleMarketConfirm()
 	// Client only sends id/slot + quantity; prices and validation stay server side.
 	if (bVisualSell)
 	{
-		Character->RequestSellItem(VisualSelected, VisualQuantity);
+		const FRuinmatesTerminalSlotView* SellView = Page.Backpack.IsValidIndex(VisualSelected) ? &Page.Backpack[VisualSelected] : nullptr;
+		const URuinmatesBackpackComponent* Backpack = Character->GetBackpack();
+		if (SellView && Backpack)
+		{
+			// Snapshot so a stale sale can never move a different stack.
+			Character->RequestSellItem(VisualSelected, VisualQuantity, SellView->ItemId, SellView->Quality,
+				SellView->Count, Backpack->GetRevision());
+		}
 	}
 	else if (MarketGoodsIds.IsValidIndex(VisualSelected))
 	{

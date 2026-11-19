@@ -356,23 +356,16 @@ void URuinmatesBackpackComponent::MarkChanged()
 	OnChanged.Broadcast();
 }
 
-bool URuinmatesBackpackComponent::TrySort(uint32 ExpectedRevision)
+void URuinmatesBackpackComponent::SortStacks(const UDataTable* Table, TArray<FRuinmatesItemStack>& InOut)
 {
-	if (!GetOwner() || !GetOwner()->HasAuthority() || ExpectedRevision != Revision)
-	{
-		return false;
-	}
-
-	// Merge identical stacks (same id, quality and max stack) before ordering.
+	// Merge identical stacks (same id, quality and max stack) first.
 	TArray<FRuinmatesItemStack> Merged;
-	int32 TotalBefore = 0;
-	for (const FRuinmatesItemStack& Slot : Slots)
+	for (const FRuinmatesItemStack& Slot : InOut)
 	{
 		if (Slot.IsEmpty())
 		{
 			continue;
 		}
-		TotalBefore += Slot.Count;
 		FRuinmatesItemStack* Existing = Merged.FindByPredicate([&Slot](const FRuinmatesItemStack& Other)
 		{
 			return Other.ItemId == Slot.ItemId && Other.Quality == Slot.Quality && Other.MaxStack == Slot.MaxStack;
@@ -387,7 +380,7 @@ bool URuinmatesBackpackComponent::TrySort(uint32 ExpectedRevision)
 		}
 	}
 
-	// Split merged totals back into legal stacks; a single pass only needs one write below.
+	// Split merged totals back into legal stacks (never above MaxStack).
 	TArray<FRuinmatesItemStack> Result;
 	for (const FRuinmatesItemStack& Item : Merged)
 	{
@@ -401,16 +394,12 @@ bool URuinmatesBackpackComponent::TrySort(uint32 ExpectedRevision)
 		}
 	}
 
-	// Category, then quality (high first), then ItemId so equal items keep a stable order.
-	const URuinmatesItemDatabaseSubsystem* Database = URuinmatesItemDatabaseSubsystem::Get(this);
-	auto CategoryOf = [Database](const FRuinmatesItemStack& Stack)
+	// Category (real table when available), then quality high to low, then ItemId for stability.
+	auto CategoryOf = [Table](const FRuinmatesItemStack& Stack)
 	{
-		if (Database && Database->IsLoaded())
+		if (const FRuinmatesItemRow* Row = URuinmatesItemDatabaseSubsystem::FindRowInTable(Table, Stack.ItemId))
 		{
-			if (const FRuinmatesItemRow* Row = Database->FindItemDefinition(Stack.ItemId))
-			{
-				return static_cast<int32>(Row->Category);
-			}
+			return static_cast<int32>(Row->Category);
 		}
 		return Stack.bUpgradeMaterial ? static_cast<int32>(ERuinmatesItemCategory::Material)
 			: static_cast<int32>(ERuinmatesItemCategory::Consumable);
@@ -429,6 +418,31 @@ bool URuinmatesBackpackComponent::TrySort(uint32 ExpectedRevision)
 		}
 		return A.ItemId.LexicalLess(B.ItemId);
 	});
+
+	InOut = MoveTemp(Result);
+}
+
+bool URuinmatesBackpackComponent::TrySort(uint32 ExpectedRevision)
+{
+	if (!GetOwner() || !GetOwner()->HasAuthority() || ExpectedRevision != Revision)
+	{
+		return false;
+	}
+
+	int32 TotalBefore = 0;
+	TArray<FRuinmatesItemStack> Result;
+	for (const FRuinmatesItemStack& Slot : Slots)
+	{
+		if (Slot.IsEmpty())
+		{
+			continue;
+		}
+		TotalBefore += Slot.Count;
+		Result.Add(Slot);
+	}
+
+	const URuinmatesItemDatabaseSubsystem* Database = URuinmatesItemDatabaseSubsystem::Get(this);
+	SortStacks(Database ? Database->GetItemTable() : nullptr, Result);
 
 	// Conservation and capacity guards: a sort never creates or destroys items or slots.
 	int32 TotalAfter = 0;
@@ -449,16 +463,22 @@ bool URuinmatesBackpackComponent::TrySort(uint32 ExpectedRevision)
 	MarkChanged();
 	return true;
 }
-
-bool URuinmatesBackpackComponent::TrySplitStack(int32 SourceIndex, int32 Count, uint32 ExpectedRevision)
+bool URuinmatesBackpackComponent::TrySplitStack(int32 SourceIndex, int32 Count, FName ExpectedItemId,
+	ERuinmatesItemQuality ExpectedQuality, int32 ExpectedSourceCount, uint32 ExpectedRevision)
 {
 	if (!GetOwner() || !GetOwner()->HasAuthority() || ExpectedRevision != Revision || !Slots.IsValidIndex(SourceIndex))
 	{
 		return false;
 	}
 
+	// Full snapshot: the split must apply to exactly the stack the caller rendered.
 	const FRuinmatesItemStack& Source = Slots[SourceIndex];
-	if (Source.IsEmpty() || Count <= 0 || Count >= Source.Count)
+	if (Source.IsEmpty() || ExpectedItemId.IsNone() || Source.ItemId != ExpectedItemId
+		|| Source.Quality != ExpectedQuality || Source.Count != ExpectedSourceCount)
+	{
+		return false;
+	}
+	if (Count <= 0 || Count >= Source.Count)
 	{
 		return false;
 	}

@@ -573,7 +573,16 @@ void URuinmatesTradeScreen::HandleConfirm()
 			ShowResult(false, NSLOCTEXT("RuinMatesUI", "PickStack", "请先选择要出售的背包格子"));
 			return;
 		}
-		Character->RequestSellItem(SelectedSlotIndex, Quantity);
+		const URuinmatesBackpackComponent* Backpack = Character->GetBackpack();
+		if (!Backpack || !Backpack->GetSlots().IsValidIndex(SelectedSlotIndex) || Backpack->GetSlots()[SelectedSlotIndex].IsEmpty())
+		{
+			ShowResult(false, NSLOCTEXT("RuinMatesUI", "PickStack", "请先选择要出售的背包格子"));
+			return;
+		}
+		// Snapshot the stack so a stale sale cannot move a different item.
+		const FRuinmatesItemStack& Stack = Backpack->GetSlots()[SelectedSlotIndex];
+		Character->RequestSellItem(SelectedSlotIndex, Quantity, Stack.ItemId, Stack.Quality, Stack.Count,
+			Backpack->GetRevision());
 	}
 }
 

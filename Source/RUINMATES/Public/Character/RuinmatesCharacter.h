@@ -102,10 +102,25 @@ public:
 	void Server_SortBackpack(uint32 ExpectedRevision);
 
 	/** Client entry: asks the server to split Count units off a stack into the first free slot. */
-	void RequestSplitStack(int32 SourceIndex, int32 Count, uint32 ExpectedRevision);
+	void RequestSplitStack(int32 SourceIndex, int32 Count, FName ExpectedItemId,
+		ERuinmatesItemQuality ExpectedQuality, int32 ExpectedSourceCount, uint32 ExpectedRevision);
+
+	/** Client entry: asks the server to use one unit of a backpack stack. */
+	void RequestUseItem(int32 SlotIndex, FName ExpectedItemId, ERuinmatesItemQuality ExpectedQuality,
+		int32 ExpectedSourceCount, uint32 ExpectedRevision);
+
+	/** Server-side item use; public so automation can exercise it without a network hop. */
+	bool TryUseBackpackItem(int32 SlotIndex, FName ExpectedItemId, ERuinmatesItemQuality ExpectedQuality,
+		int32 ExpectedSourceCount, uint32 ExpectedRevision);
 
 	UFUNCTION(Server, Reliable)
-	void Server_SplitStack(int32 SourceIndex, int32 Count, uint32 ExpectedRevision);
+	void Server_SplitStack(int32 SourceIndex, int32 Count, FName ExpectedItemId,
+		ERuinmatesItemQuality ExpectedQuality, int32 ExpectedSourceCount, uint32 ExpectedRevision);
+
+	/** Server: validates the stack snapshot, applies the item effect and consumes one unit. */
+	UFUNCTION(Server, Reliable)
+	void Server_UseItem(int32 SlotIndex, FName ExpectedItemId, ERuinmatesItemQuality ExpectedQuality,
+		int32 ExpectedSourceCount, uint32 ExpectedRevision);
 
 	UFUNCTION(BlueprintPure, Category = "RuinMates|Weapon")
 	ABaseWeapon* GetEquippedWeapon() const { return EquippedWeapon; }
@@ -140,7 +155,8 @@ public:
 
 	// Client requests. Only the item id / slot and quantity cross the wire; the server prices them.
 	void RequestBuyItem(FName ItemId, int32 Count);
-	void RequestSellItem(int32 SlotIndex, int32 Count);
+	void RequestSellItem(int32 SlotIndex, int32 Count, FName ExpectedItemId,
+		ERuinmatesItemQuality ExpectedQuality, int32 ExpectedSourceCount, uint32 ExpectedRevision);
 
 	// Body montages from the equipped weapon data. The server calls this directly.
 	// Clients call it from weapon OnRep so the third-person fire/reload actually plays.
@@ -275,7 +291,8 @@ protected:
 	void Server_BuyItem(FName ItemId, int32 Count);
 
 	UFUNCTION(Server, Reliable)
-	void Server_SellItem(int32 SlotIndex, int32 Count);
+	void Server_SellItem(int32 SlotIndex, int32 Count, FName ExpectedItemId,
+		ERuinmatesItemQuality ExpectedQuality, int32 ExpectedSourceCount, uint32 ExpectedRevision);
 
 	UFUNCTION(Server, Reliable)
 	void Server_EndTrade();

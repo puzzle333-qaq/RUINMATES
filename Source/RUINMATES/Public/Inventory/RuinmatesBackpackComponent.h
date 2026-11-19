@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "Inventory/RuinmatesItemTypes.h"
+class UDataTable;
 #include "RuinmatesBackpackComponent.generated.h"
 
 DECLARE_MULTICAST_DELEGATE(FRuinmatesBackpackChanged);
@@ -79,9 +80,19 @@ public:
 
 	/**
 	 * Server only. Splits Count units off SourceIndex into the first empty slot.
-	 * Rejected when the revision, the source stack or the free-slot requirement fails.
+	 * The caller must describe the exact stack it rendered; a mismatch or a missing free slot
+	 * changes nothing.
 	 */
-	bool TrySplitStack(int32 SourceIndex, int32 Count, uint32 ExpectedRevision);
+	bool TrySplitStack(int32 SourceIndex, int32 Count, FName ExpectedItemId,
+		ERuinmatesItemQuality ExpectedQuality, int32 ExpectedSourceCount, uint32 ExpectedRevision);
+
+	/** Pure merge/order pass shared by TrySort and the automation tests. */
+	static void SortStacks(const UDataTable* Table, TArray<FRuinmatesItemStack>& InOut);
+
+#if WITH_DEV_AUTOMATION_TESTS
+	/** Test-only: installs exact slot contents so merges can be tested with separate stacks. */
+	void SetSlotsForTest(const TArray<FRuinmatesItemStack>& InSlots) { Slots = InSlots; }
+#endif
 
 	UFUNCTION()
 	void OnRep_Slots();
