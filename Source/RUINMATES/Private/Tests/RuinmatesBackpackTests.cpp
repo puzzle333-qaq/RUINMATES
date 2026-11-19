@@ -6,6 +6,7 @@
 #include "Inventory/RuinmatesLootContainer.h"
 #include "Inventory/RuinmatesItemDatabaseSubsystem.h"
 #include "UI/RuinmatesTerminalTypes.h"
+#include "Stats/StatsComponent.h"
 #include "Engine/DataTable.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -394,12 +395,15 @@ bool FRuinmatesBackpackSortTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	// Scrambled input: two Bandage stacks, 2 Cans, 5 AmmoBox.
-	Backpack->TryAdd(MakeItemStack(Table, TEXT("Bandage"), 3));
-	Backpack->TryAdd(MakeItemStack(Table, TEXT("Cans"), 2));
-	Backpack->TryAdd(MakeItemStack(Table, TEXT("AmmoBox"), 5));
-	Backpack->TryAdd(MakeItemStack(Table, TEXT("Bandage"), 4));
-
+	// Two genuinely separate Bandage stacks (installed directly, so TryAdd cannot merge them first).
+	TArray<FRuinmatesItemStack> Seeded;
+	Seeded.SetNum(Backpack->GetCapacity());
+	Seeded[0] = MakeItemStack(Table, TEXT("Bandage"), 3);
+	Seeded[1] = MakeItemStack(Table, TEXT("Cans"), 2);
+	Seeded[2] = MakeItemStack(Table, TEXT("AmmoBox"), 5);
+	Seeded[3] = MakeItemStack(Table, TEXT("Bandage"), 4);
+	Backpack->SetSlotsForTest(Seeded);
+	TestEqual(TEXT("Seeded stacks stay separate before the sort"), Backpack->GetUsedSlotCount(), 4);
 	const int32 TotalBefore = TotalUnits(Backpack);
 	const int32 UsedBefore = Backpack->GetUsedSlotCount();
 	const uint32 RevisionBefore = Backpack->GetRevision();
@@ -410,11 +414,11 @@ bool FRuinmatesBackpackSortTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Merging never increases slot usage"), Backpack->GetUsedSlotCount() <= UsedBefore);
 
 	const TArray<FRuinmatesItemStack>& Slots = Backpack->GetSlots();
-	// The bare test world has no game instance, so the sorter falls back to the stack's own quality
-	// and id: the Fine AmmoBox leads, then the two Common stacks by id.
-	TestTrue(TEXT("Higher quality sorts first"), Slots.IsValidIndex(0) && Slots[0].ItemId == TEXT("AmmoBox") && Slots[0].Count == 5);
+	// No game instance in the test world, so TrySort uses the quality/id fallback; the real
+	// DT_Items category order is covered by BackpackSortCategories.
+	TestTrue(TEXT("Higher quality leads the fallback order"), Slots.IsValidIndex(0) && Slots[0].ItemId == TEXT("AmmoBox") && Slots[0].Count == 5);
 	TestTrue(TEXT("The merged Bandage stack follows"), Slots.IsValidIndex(1) && Slots[1].ItemId == TEXT("Bandage") && Slots[1].Count == 7);
-	TestTrue(TEXT("Equal id/quality order is stable by ItemId"), Slots.IsValidIndex(2) && Slots[2].ItemId == TEXT("Cans"));
+	TestTrue(TEXT("Equal quality order is stable by ItemId"), Slots.IsValidIndex(2) && Slots[2].ItemId == TEXT("Cans"));
 	for (int32 Index = Backpack->GetUsedSlotCount(); Index < Slots.Num(); ++Index)
 	{
 		TestTrue(TEXT("Every gap is pushed to the end"), Slots[Index].IsEmpty());
@@ -514,19 +518,24 @@ bool FRuinmatesBackpackSplitTest::RunTest(const FString& Parameters)
 
 	Backpack->TryAdd(MakeItemStack(Table, TEXT("Bandage"), 7));
 	const uint32 Revision = Backpack->GetRevision();
-	TestFalse(TEXT("Splitting zero is rejected"), Backpack->TrySplitStack(0, 0, Revision));
-	TestFalse(TEXT("Splitting the whole stack is rejected"), Backpack->TrySplitStack(0, 7, Revision));
-	TestFalse(TEXT("Splitting more than the stack is rejected"), Backpack->TrySplitStack(0, 8, Revision));
-	TestEqual(TEXT("Rejected splits leave the stack untouched"), Backpack->GetSlots()[0].Count, 7);
+	const FName BandageId = TEXT("Bandage");
+	const ERuinmatesItemQuality BandageQuality = Backpack->GetSlots()[0].Quality;
+	TestFalse(TEXT("Splitting zero is rejected"), Backpack->TrySplitStack(0, 0, BandageId, BandageQuality, 7, Revision));
+	TestFalse(TEXT("Splitting the whole stack is rejected"), Backpack->TrySplitStack(0, 7, BandageId, BandageQuality, 7, Revision));
+	TestFalse(TEXT("Splitting more than the stack is rejected"), Backpack->TrySplitStack(0, 8, BandageId, BandageQuality, 7, Revision));
+	TestFalse(TEXT("A mismatched item snapshot is rejected"), Backpack->TrySplitStack(0, 3, FName(TEXT("Cans")), BandageQuality, 7, Revision));
+	TestFalse(TEXT("A mismatched count snapshot is rejected"), Backpack->TrySplitStack(0, 3, BandageId, BandageQuality, 6, Revision));
 
-	TestTrue(TEXT("Splitting three units is accepted"), Backpack->TrySplitStack(0, 3, Revision));
+	TestTrue(TEXT("Splitting three units is accepted"), Backpack->TrySplitStack(0, 3, BandageId, BandageQuality, 7, Revision));
 	TestEqual(TEXT("The source keeps the remainder"), Backpack->GetSlots()[0].Count, 4);
 	TestEqual(TEXT("The split lands in the next free slot"), Backpack->GetSlots()[1].Count, 3);
 	TestEqual(TEXT("Split conserves the total"), TotalUnits(Backpack), 7);
 	TestEqual(TEXT("Split keeps the item identity"), Backpack->GetSlots()[1].ItemId, FName(TEXT("Bandage")));
 	TestEqual(TEXT("Split keeps the quality"), static_cast<int32>(Backpack->GetSlots()[1].Quality),
 		static_cast<int32>(Backpack->GetSlots()[0].Quality));
-	TestFalse(TEXT("A stale revision is rejected"), Backpack->TrySplitStack(0, 2, Revision));
+	const uint32 SplitRevision = Backpack->GetRevision();
+	TestFalse(TEXT("A stale revision is rejected"), Backpack->TrySplitStack(0, 2, BandageId, Backpack->GetSlots()[0].Quality, Backpack->GetSlots()[0].Count, Revision));
+	TestFalse(TEXT("A stale revision is also rejected after the split"), Backpack->TrySplitStack(0, 1, BandageId, Backpack->GetSlots()[0].Quality, Backpack->GetSlots()[0].Count, SplitRevision - 1));
 
 	// Fill every remaining slot so no free slot exists.
 	while (Backpack->GetUsedSlotCount() < Backpack->GetCapacity())
@@ -535,7 +544,7 @@ bool FRuinmatesBackpackSplitTest::RunTest(const FString& Parameters)
 	}
 	const int32 FullTotal = TotalUnits(Backpack);
 	const uint32 FullRevision = Backpack->GetRevision();
-	TestFalse(TEXT("Splitting without a free slot fails"), Backpack->TrySplitStack(0, 1, FullRevision));
+	TestFalse(TEXT("Splitting without a free slot fails"), Backpack->TrySplitStack(0, 1, Backpack->GetSlots()[0].ItemId, Backpack->GetSlots()[0].Quality, Backpack->GetSlots()[0].Count, FullRevision));
 	TestEqual(TEXT("A failed split changes nothing"), TotalUnits(Backpack), FullTotal);
 	TestEqual(TEXT("A failed split keeps the revision"), Backpack->GetRevision(), FullRevision);
 
@@ -568,6 +577,114 @@ bool FRuinmatesMarketTradeStateTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Reset clears the selected item"), State.SellItemId.IsNone());
 	TestEqual(TEXT("Reset clears the selected slot"), State.SellSlot, INDEX_NONE);
 	TestTrue(TEXT("A request can start after a reset"), State.BeginRequest());
+	return true;
+}
+#
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRuinmatesBackpackSortCategoryTest, "RuinMates.Inventory.BackpackSortCategories",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FRuinmatesBackpackSortCategoryTest::RunTest(const FString& Parameters)
+{
+	UDataTable* Table = LoadObject<UDataTable>(nullptr, TEXT("/Game/RUINMATES/Data/Items/DT_Items.DT_Items"));
+	if (!TestNotNull(TEXT("DT_Items exists"), Table))
+	{
+		return false;
+	}
+
+	// One row per real category; the pure sorter must order by the table category, not the fallback.
+	TArray<FRuinmatesItemStack> Stacks;
+	Stacks.Add(MakeItemStack(Table, TEXT("Circuit"), 1));   // Material
+	Stacks.Add(MakeItemStack(Table, TEXT("Cans"), 1));      // Consumable
+	Stacks.Add(MakeItemStack(Table, TEXT("AmmoBox"), 1));   // Ammo
+	Stacks.Add(MakeItemStack(Table, TEXT("Bandage"), 1));   // Consumable
+	URuinmatesBackpackComponent::SortStacks(Table, Stacks);
+	TestEqual(TEXT("Category sort keeps every stack"), Stacks.Num(), 4);
+	TestEqual(TEXT("Consumables come first"), static_cast<int32>(Stacks[0].Quality) >= 0 ? Stacks[0].ItemId : NAME_None, FName(TEXT("Bandage")));
+	TestEqual(TEXT("Second consumable keeps ItemId order"), Stacks[1].ItemId, FName(TEXT("Cans")));
+	TestEqual(TEXT("Ammo follows consumables"), Stacks[2].ItemId, FName(TEXT("AmmoBox")));
+	TestEqual(TEXT("Material comes last"), Stacks[3].ItemId, FName(TEXT("Circuit")));
+
+	// Quality wins inside one category.
+	TArray<FRuinmatesItemStack> Mixed;
+	Mixed.Add(MakeItemStack(Table, TEXT("Bandage"), 1));
+	FRuinmatesItemStack FineBandage = MakeItemStack(Table, TEXT("Bandage"), 1);
+	FineBandage.Quality = ERuinmatesItemQuality::Rare;
+	Mixed.Add(FineBandage);
+	URuinmatesBackpackComponent::SortStacks(Table, Mixed);
+	TestEqual(TEXT("Higher quality sorts first inside a category"), static_cast<int32>(Mixed[0].Quality),
+		static_cast<int32>(ERuinmatesItemQuality::Rare));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRuinmatesItemUseTest, "RuinMates.Inventory.ItemUse",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FRuinmatesItemUseTest::RunTest(const FString& Parameters)
+{
+	UDataTable* Table = LoadObject<UDataTable>(nullptr, TEXT("/Game/RUINMATES/Data/Items/DT_Items.DT_Items"));
+	if (!TestNotNull(TEXT("DT_Items exists"), Table))
+	{
+		return false;
+	}
+
+	ARuinmatesCharacter* Character = nullptr;
+	URuinmatesBackpackComponent* Backpack = nullptr;
+	UWorld* World = MakeBackpackWorld(Character, Backpack);
+	if (!TestTrue(TEXT("Character and backpack exist"), IsValid(Character) && IsValid(Backpack)))
+	{
+		World->DestroyWorld(false);
+		World->RemoveFromRoot();
+		return false;
+	}
+
+	UStatsComponent* Stats = Character->GetStats();
+	if (!TestNotNull(TEXT("Character has stats"), Stats))
+	{
+		World->DestroyWorld(false);
+		World->RemoveFromRoot();
+		return false;
+	}
+
+	// Heal success: damaged character, one bandage used, exactly one consumed.
+	Stats->ChangeHealthByAmount(-40.f, nullptr);
+	const float BeforeHeal = Stats->GetHealth();
+	Backpack->TryAdd(MakeItemStack(Table, TEXT("Bandage"), 2));
+	const FName BandageId = TEXT("Bandage");
+	const ERuinmatesItemQuality BandageQuality = Backpack->GetSlots()[0].Quality;
+	TestTrue(TEXT("Using a bandage succeeds"),
+		Character->TryUseBackpackItem(0, BandageId, BandageQuality, 2, Backpack->GetRevision()));
+	TestTrue(TEXT("Healing raises health"), Stats->GetHealth() > BeforeHeal);
+	TestEqual(TEXT("A successful use consumes exactly one unit"), Backpack->GetSlots()[0].Count, 1);
+
+	// Full health rejects the use and keeps the item.
+	Stats->ChangeHealthByAmount(1000.f, nullptr);
+	TestTrue(TEXT("Health is full"), Stats->GetHealth() >= Stats->GetMaxHealth());
+	TestFalse(TEXT("Using a bandage at full health fails"),
+		Character->TryUseBackpackItem(0, BandageId, BandageQuality, 1, Backpack->GetRevision()));
+	TestEqual(TEXT("A failed use consumes nothing"), Backpack->GetSlots()[0].Count, 1);
+
+	// Stale revision, wrong snapshot, illegal slot and empty slot all fail without consuming.
+	TestFalse(TEXT("A stale revision is rejected"),
+		Character->TryUseBackpackItem(0, BandageId, BandageQuality, 1, Backpack->GetRevision() - 1));
+	TestFalse(TEXT("A mismatched count snapshot is rejected"),
+		Character->TryUseBackpackItem(0, BandageId, BandageQuality, 9, Backpack->GetRevision()));
+	TestFalse(TEXT("A negative slot is rejected"),
+		Character->TryUseBackpackItem(-1, BandageId, BandageQuality, 1, Backpack->GetRevision()));
+	TestFalse(TEXT("An out-of-range slot is rejected"),
+		Character->TryUseBackpackItem(Backpack->GetCapacity() + 3, BandageId, BandageQuality, 1, Backpack->GetRevision()));
+	TestEqual(TEXT("Rejected uses leave the stack untouched"), Backpack->GetSlots()[0].Count, 1);
+
+	// Ammo box without a weapon fails and keeps the item.
+	Backpack->TryAdd(MakeItemStack(Table, TEXT("AmmoBox"), 1));
+	const int32 AmmoSlot = 1;
+	const int32 AmmoCount = Backpack->GetSlots()[AmmoSlot].Count;
+	TestFalse(TEXT("An ammo box without a weapon fails"),
+		Character->TryUseBackpackItem(AmmoSlot, FName(TEXT("AmmoBox")), Backpack->GetSlots()[AmmoSlot].Quality, AmmoCount, Backpack->GetRevision()));
+	TestEqual(TEXT("A failed ammo use consumes nothing"), Backpack->GetSlots()[AmmoSlot].Count, AmmoCount);
+
+	World->DestroyWorld(false);
+	World->RemoveFromRoot();
 	return true;
 }
 #endif
