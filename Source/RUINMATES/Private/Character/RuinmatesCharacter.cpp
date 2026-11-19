@@ -509,7 +509,8 @@ void ARuinmatesCharacter::TryReloadWeapon()
 		{
 			WeaponPose->SetReloading(true);
 		}
-		PlayEquippedMontages(false, false, true);
+		// The body montage is started once by StartReloadOnServer (host) or OnRep_WeaponStatus
+		// (clients); playing it again here restarted it on the host only.
 	}
 }
 
@@ -559,8 +560,17 @@ void ARuinmatesCharacter::PlayEquippedMontages(bool bJustEquipped, bool bJustFir
 	}
 	if (bJustReloaded)
 	{
+		// Same rule as fire: never restart a reload montage that is already running, otherwise the
+		// duplicate host call keeps it stuck on its first frames and the reload is never visible.
 		const EReloadType ReloadType = EquippedWeapon->GetAmmoInMag() <= 0 ? EReloadType::Empty : EReloadType::Tactical;
-		PlayBodyMontage(Data->ThirdPersonMontages.ResolveReloadMontage(ReloadType));
+		if (UAnimMontage* ReloadMontage = Data->ThirdPersonMontages.ResolveReloadMontage(ReloadType))
+		{
+			UAnimInstance* Anim = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr;
+			if (!Anim || !Anim->Montage_IsPlaying(ReloadMontage))
+			{
+				PlayBodyMontage(ReloadMontage);
+			}
+		}
 	}
 
 	if (IsValid(WeaponPose))
