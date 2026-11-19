@@ -111,9 +111,10 @@ Capture play settings are restored without saving altered editor defaults.
 
 - The test map and mannequin remain the project's actual content. The reference
   wasteland scene, survivor model and teammate portrait art are not in this pack.
-- Unmatched live loot icons show a neutral glyph plus their real name. Canned
-  food, circuit boards, alien glands/cores and model-specific weapon art need
-  matching assets. Bandage and AmmoBox reuse corresponding V4 icons.
+- Live loot icons come from DT_Items: every seeded item row binds its own
+  `/Game/RUINMATES/UI/Textures/Items/T_Item_<RowName>` artwork. A row with no
+  icon falls back to the neutral placeholder cell glyph, so new items without
+  art never borrow another item's icon.
 - Current weapon data does not provide matching weapon portraits. Live HUD uses
   a neutral weapon glyph; realistic sample weapons appear only in labelled demos.
 - No actual voice service was verified. Speaking states are demonstrated only
@@ -131,3 +132,61 @@ Capture play settings are restored without saving altered editor defaults.
 
 Editor build, full automation, screenshot dimensions and interaction results are
 recorded below after final verification.
+
+## Maintenance log — 2026-11-19
+
+Low-risk maintenance pass. No layout, art or replication change.
+
+Code:
+
+- `URuinmatesBackpackComponent::GetAvailableCapacityForItem` resolved a legacy
+  item id but still compared the raw id against stored slots, so the free room
+  in matching stacks was under-counted and an all-or-nothing purchase could be
+  rejected. The comparison now uses the resolved id. The pure math lives in
+  `ComputeAvailableCapacity` for testing.
+- `URuinmatesItemDatabaseSubsystem::ResolveItemIdInTable` exposes the table-level
+  legacy resolution (numeric id -> `DisplayName`) to tooling and tests.
+- `URuinmatesTerminalScreen::RebuildSlots` no longer runs an empty loop over the
+  backpack cells.
+- `URuinmatesTradeScreen` drops its private `WithAlpha` in favour of the shared
+  `RuinmatesUI::WithAlpha`. A file-scope `using RuinmatesUI::WithAlpha;` in
+  `RuinmatesTerminalScreen.cpp` leaks into the same unity blob, which made the
+  duplicate ambiguous and broke the build whenever the blob layout changed.
+
+Data / presentation:
+
+- DT_Items already bound a matching icon for all six seeded items; the screen
+  then discarded four of them and replaced two with generic V4 glyphs. The
+  hardcoded override is gone and the table is authoritative. Items without an
+  icon keep the neutral placeholder.
+- The item tooltip now shows the unit price next to the stack value.
+
+Tests (all Editor Context / Engine Filter):
+
+- `RuinMates.Inventory.BackpackLegacyCapacity` — legacy id resolves by display
+  name; capacity counts the room left in the resolved stack.
+- `RuinMates.UI.V4.CategoryFilterRealItems` — filtering the real DT_Items rows
+  compacts the grid, keeps each view's true slot index, never emits empty cells,
+  and the overview still returns every slot.
+- `RuinMates.UI.V4.ItemIconReferences` — every bound icon loads as a UI texture
+  and is the row's own `T_Item_<RowName>` asset.
+
+Results:
+
+- `RUINMATESEditor Win64 Development` build: SUCCESS.
+- `Automation RunTests RuinMates`: 32/32 Success (see delivery note for the
+  exact run).
+
+Known issues recorded, not changed:
+
+- `URuinmatesBackpackComponent::TryAdd` still matches stacks by the raw
+  `ItemId` (`FRuinmatesItemStack::CanStackWith`). Stored slots are normalized, so
+  the buy/loot paths are unaffected, but a legacy-id stack added by other code
+  would open a second slot instead of merging.
+- `RuinmatesTerminalScreen.cpp` keeps a file-scope `using RuinmatesUI::WithAlpha;`
+  which is unity-build-unsafe for any future file in the same blob.
+- `URuinmatesGridScrollBox` does not reset the external scrollbar in
+  `ReleaseSlateResources`; no leak was observed in the current single-screen use.
+- Category filter drops empty cells by design, so a filtered page can end with a
+  partially filled last row; this matches the compact layout requirement.
+

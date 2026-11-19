@@ -2,6 +2,8 @@
 #include "Engine/Texture2D.h"
 #include "UI/RuinmatesTerminalTypes.h"
 #include "UI/RuinmatesUIStyle.h"
+#include "Engine/DataTable.h"
+#include "Inventory/RuinmatesItemTypes.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -87,6 +89,141 @@ bool FRuinmatesV4CategoryDisplay::RunTest(const FString& Parameters)
 		RuinmatesTerminalDisplay::FilterBackpackSlots(Inventory.Backpack, NAME_None).Num(), Inventory.Capacity);
 	TestEqual(TEXT("An empty category returns no fake empty slots"),
 		RuinmatesTerminalDisplay::FilterBackpackSlots(Inventory.Backpack, TEXT("Weapon")).Num(), 0);
+	return true;
+}
+#
+
+// Category filtering over the real item table: compact rows, true slot indices, no fake cells.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRuinmatesRealItemFilterTest, "RuinMates.UI.V4.CategoryFilterRealItems",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FRuinmatesRealItemFilterTest::RunTest(const FString& Parameters)
+{
+	UDataTable* Table = LoadObject<UDataTable>(nullptr, TEXT("/Game/RUINMATES/Data/Items/DT_Items.DT_Items"));
+	if (!TestNotNull(TEXT("DT_Items exists"), Table))
+	{
+		return false;
+	}
+
+	TArray<FName> RowNames = Table->GetRowNames();
+	RowNames.Sort(FNameLexicalLess());
+
+	// Real rows at scattered slots, with empty slots between them.
+	TArray<FRuinmatesTerminalSlotView> Slots;
+	Slots.SetNum(12);
+	int32 Cursor = 0;
+	for (const FName& RowName : RowNames)
+	{
+		const FRuinmatesItemRow* Row = Table->FindRow<FRuinmatesItemRow>(RowName, TEXT("FilterTest"), false);
+		if (!Row || Slots.Num() <= Cursor)
+		{
+			continue;
+		}
+		FRuinmatesTerminalSlotView& View = Slots[Cursor];
+		View.StableIndex = Cursor;
+		View.State = ERuinmatesTerminalSlotState::Revealed;
+		View.Name = Row->DisplayName;
+		View.ItemId = RowName;
+		View.Category = FName(*StaticEnum<ERuinmatesItemCategory>()->GetNameStringByValue(static_cast<int64>(Row->Category)));
+		Cursor += 2;
+	}
+
+	const TArray<FRuinmatesTerminalSlotView> All = RuinmatesTerminalDisplay::FilterBackpackSlots(Slots, NAME_None);
+	TestEqual(TEXT("Overview keeps every real slot"), All.Num(), Slots.Num());
+
+	for (int32 RowIndex = 0; RowIndex < RowNames.Num(); ++RowIndex)
+	{
+		const FRuinmatesItemRow* Row = Table->FindRow<FRuinmatesItemRow>(RowNames[RowIndex], TEXT("FilterTest"), false);
+		if (!Row)
+		{
+			continue;
+		}
+		const FName Category(*StaticEnum<ERuinmatesItemCategory>()->GetNameStringByValue(static_cast<int64>(Row->Category)));
+		const TArray<FRuinmatesTerminalSlotView> Filtered = RuinmatesTerminalDisplay::FilterBackpackSlots(Slots, Category);
+		for (const FRuinmatesTerminalSlotView& View : Filtered)
+		{
+			TestTrue(TEXT("Filtered slot keeps a real slot index"), Slots.IsValidIndex(View.StableIndex));
+			if (Slots.IsValidIndex(View.StableIndex))
+			{
+				TestTrue(TEXT("Reported index points at the same item"),
+					Slots[View.StableIndex].State == ERuinmatesTerminalSlotState::Revealed
+					&& Slots[View.StableIndex].ItemId == View.ItemId);
+			}
+			TestEqual(TEXT("Filtered row carries the requested category"), View.Category, Category);
+			TestTrue(TEXT("Filtered rows are revealed items, never empty cells"),
+				View.State == ERuinmatesTerminalSlotState::Revealed);
+		}
+	}
+
+	// Compaction: the filtered list must not carry the empty slots of the overview.
+	int32 RevealedInTable = 0;
+	for (const FRuinmatesTerminalSlotView& View : Slots)
+	{
+		RevealedInTable += View.State == ERuinmatesTerminalSlotState::Revealed ? 1 : 0;
+	}
+	// Sum once per distinct category: several rows share one category, so a per-row sum would
+	// count the same cells repeatedly.
+	TSet<FName> DistinctCategories;
+	for (int32 RowIndex = 0; RowIndex < RowNames.Num(); ++RowIndex)
+	{
+		const FRuinmatesItemRow* Row = Table->FindRow<FRuinmatesItemRow>(RowNames[RowIndex], TEXT("FilterTest"), false);
+		if (Row)
+		{
+			DistinctCategories.Add(FName(*StaticEnum<ERuinmatesItemCategory>()->GetNameStringByValue(static_cast<int64>(Row->Category))));
+		}
+	}
+	int32 FilteredTotal = 0;
+	for (const FName& Category : DistinctCategories)
+	{
+		FilteredTotal += RuinmatesTerminalDisplay::FilterBackpackSlots(Slots, Category).Num();
+	}
+	TestEqual(TEXT("Every revealed item is reachable through its own category"), FilteredTotal, RevealedInTable);
+	TestEqual(TEXT("An unused category returns no cells"),
+		RuinmatesTerminalDisplay::FilterBackpackSlots(Slots, TEXT("Weapon")).Num(), 0);
+	return true;
+}
+
+// Every shipped item must point at its own existing icon (or no icon at all for the placeholder).
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRuinmatesItemIconReferenceTest, "RuinMates.UI.V4.ItemIconReferences",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FRuinmatesItemIconReferenceTest::RunTest(const FString& Parameters)
+{
+	UDataTable* Table = LoadObject<UDataTable>(nullptr, TEXT("/Game/RUINMATES/Data/Items/DT_Items.DT_Items"));
+	if (!TestNotNull(TEXT("DT_Items exists"), Table))
+	{
+		return false;
+	}
+
+	int32 IconsBound = 0;
+	for (const TPair<FName, uint8*>& Pair : Table->GetRowMap())
+	{
+		const FRuinmatesItemRow* Row = reinterpret_cast<const FRuinmatesItemRow*>(Pair.Value);
+		if (!Row)
+		{
+			continue;
+		}
+		if (Row->Icon.IsNull())
+		{
+			// No artwork is a valid state: the item cell falls back to the neutral placeholder.
+			continue;
+		}
+		++IconsBound;
+
+		const FString IconPath = Row->Icon.ToSoftObjectPath().ToString();
+		const FString ExpectedSuffix = FString::Printf(TEXT("/T_Item_%s.T_Item_%s"), *Pair.Key.ToString(), *Pair.Key.ToString());
+		TestTrue(FString::Printf(TEXT("%s uses its own item icon (%s)"), *Pair.Key.ToString(), *IconPath),
+			IconPath.EndsWith(ExpectedSuffix));
+
+		UTexture2D* Texture = Row->Icon.LoadSynchronous();
+		if (TestNotNull(FString::Printf(TEXT("%s icon loads"), *Pair.Key.ToString()), Texture))
+		{
+			TestEqual(TEXT("Item icon is a UI texture"),
+				static_cast<int32>(Texture->LODGroup), static_cast<int32>(TEXTUREGROUP_UI));
+		}
+	}
+
+	TestTrue(TEXT("The seeded item set has bound artwork"), IconsBound >= 6);
 	return true;
 }
 #endif
