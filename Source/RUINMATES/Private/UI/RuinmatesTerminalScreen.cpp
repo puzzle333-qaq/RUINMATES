@@ -913,6 +913,8 @@ void URuinmatesTerminalScreen::OpenFor(ARuinmatesCharacter* InCharacter, ARuinma
 {
 	CloseSlotMenu();
 	bLive = true;
+	bMarketLive = false;
+	LiveMerchant = nullptr;
 	bClosing = false;
 	VisualMode = IsValid(InContainer) ? 1 : 0;
 	LiveCharacter = InCharacter;
@@ -1375,10 +1377,34 @@ void URuinmatesTerminalScreen::UnbindSources()
 
 void URuinmatesTerminalScreen::Refresh()
 {
-	if (bLive)
+	// One refresh entry for every live binding (backpack OnChanged, container OnChanged, wallet).
+	if (bMarketLive)
+	{
+		RefreshMarketLive();
+	}
+	else if (bLive)
 	{
 		RefreshFromLive();
 	}
+}
+
+void URuinmatesTerminalScreen::MakeSlotView(const FRuinmatesItemStack& Stack, int32 StableIndex, FRuinmatesTerminalSlotView& OutView) const
+{
+	OutView = FRuinmatesTerminalSlotView();
+	OutView.StableIndex = StableIndex;
+	if (Stack.IsEmpty())
+	{
+		OutView.State = ERuinmatesTerminalSlotState::Empty;
+		return;
+	}
+	OutView.State = ERuinmatesTerminalSlotState::Revealed;
+	OutView.ItemId = Stack.ItemId;
+	OutView.Name = Stack.DisplayName;
+	OutView.Count = Stack.Count;
+	OutView.Quality = Stack.Quality;
+	OutView.Description = Stack.Description;
+	OutView.UnitValue = Stack.UnitValue;
+	FillFromDatabase(this, Stack, OutView);
 }
 
 void URuinmatesTerminalScreen::RefreshFromLive()
@@ -1528,6 +1554,15 @@ void URuinmatesTerminalScreen::ClosePreview()
 		return;
 	}
 	bClosing = true;
+	if (bMarketLive)
+	{
+		// Leaving the market ends the trade so the server stops accepting requests from this UI.
+		if (ARuinmatesCharacter* Character = LiveCharacter.Get())
+		{
+			Character->EndTrade();
+			return;
+		}
+	}
 	if (bLive)
 	{
 		if (ARuinmatesCharacter* Character = LiveCharacter.Get())

@@ -3,6 +3,9 @@
 #include "Blueprint/WidgetTree.h"
 #include "Character/RuinmatesCharacter.h"
 #include "Inventory/RuinmatesItemDatabaseSubsystem.h"
+#include "Inventory/RuinmatesBackpackComponent.h"
+#include "Inventory/RuinmatesMerchant.h"
+#include "Game/RuinmatesGameState.h"
 #include "Components/Border.h"
 #include "Components/ButtonSlot.h"
 #include "Components/CanvasPanel.h"
@@ -354,9 +357,12 @@ void URuinmatesTerminalScreen::BuildV4Chrome()
 	MarketTotal->SetJustification(ETextJustify::Right);
 	At(MarketPage, MarketQuantity, 100, 554, 72, 32);
 	At(MarketPage, MarketTotal, 256, 554, 320, 32);
-	URuinmatesTechButton* Confirm = Button(WidgetTree, NSLOCTEXT("RuinMatesUI", "VisualOnlyTrade", "视觉预览"));
-	Confirm->SetIsEnabled(false);
-	At(MarketPage, Confirm, 332, 606, 244, 56);
+	MarketConfirmButton = Button(WidgetTree, NSLOCTEXT("RuinMatesUI", "VisualOnlyTrade", "视觉预览"));
+	MarketConfirmButton->SetIsEnabled(false);
+	MarketConfirmButton->OnClicked.AddDynamic(this, &URuinmatesTerminalScreen::HandleMarketConfirm);
+	At(MarketPage, MarketConfirmButton, 332, 600, 244, 52);
+	MarketStatusText = Text(WidgetTree, TEXT("TradeStatus"), FText::GetEmpty(), 14, true);
+	At(MarketPage, MarketStatusText, 24, 660, 576, 32);
 
 	UCanvasPanel* Components = WidgetTree->ConstructWidget<UCanvasPanel>();
 	RightSwitcher->AddChild(Components);
@@ -398,6 +404,8 @@ void URuinmatesTerminalScreen::ShowVisualPreview(int32 Mode, int32 PreviewCapaci
 	CloseSlotMenu();
 	UnbindSources();
 	bLive = false;
+	bMarketLive = false;
+	LiveMerchant = nullptr;
 	bClosing = false;
 	LiveCharacter = nullptr;
 	LiveContainer = nullptr;
@@ -512,8 +520,331 @@ void URuinmatesTerminalScreen::PreviewSearch() { SetVisualMode(1); }
 void URuinmatesTerminalScreen::PreviewStorage() { SetVisualMode(2); }
 void URuinmatesTerminalScreen::PreviewMarket() { SetVisualMode(3); }
 void URuinmatesTerminalScreen::PreviewComponents() { SetVisualMode(4); }
-void URuinmatesTerminalScreen::PreviewBuy() { bVisualSell = false; VisualSelected = INDEX_NONE; RefreshVisualPage(); }
-void URuinmatesTerminalScreen::PreviewSell() { bVisualSell = true; VisualSelected = INDEX_NONE; RefreshVisualPage(); }
-void URuinmatesTerminalScreen::PreviewQuantityUp() { VisualQuantity = FMath::Min(99, VisualQuantity + 1); RefreshVisualPage(); }
-void URuinmatesTerminalScreen::PreviewQuantityDown() { VisualQuantity = FMath::Max(1, VisualQuantity - 1); RefreshVisualPage(); }
-void URuinmatesTerminalScreen::PreviewMarketSelected(int32 Index) { VisualSelected = Index; VisualQuantity = 1; RefreshVisualPage(); }
+void URuinmatesTerminalScreen::PreviewBuy() { if (bMarketLive) { HandleMarketBuyMode(); return; } bVisualSell = false; VisualSelected = INDEX_NONE; RefreshVisualPage(); }
+void URuinmatesTerminalScreen::PreviewSell() { if (bMarketLive) { HandleMarketSellMode(); return; } bVisualSell = true; VisualSelected = INDEX_NONE; RefreshVisualPage(); }
+void URuinmatesTerminalScreen::PreviewQuantityUp() { if (bMarketLive) { HandleMarketQuantityUp(); return; } VisualQuantity = FMath::Min(99, VisualQuantity + 1); RefreshVisualPage(); }
+void URuinmatesTerminalScreen::PreviewQuantityDown() { if (bMarketLive) { HandleMarketQuantityDown(); return; } VisualQuantity = FMath::Max(1, VisualQuantity - 1); RefreshVisualPage(); }
+void URuinmatesTerminalScreen::PreviewMarketSelected(int32 Index) { if (bMarketLive) { HandleMarketSelected(Index); return; } VisualSelected = Index; VisualQuantity = 1; RefreshVisualPage(); }
+
+// ---------------------------------------------------------------------------
+// Live market: the V4 market page bound to a real merchant and the shared backend.
+// ---------------------------------------------------------------------------
+
+void URuinmatesTerminalScreen::OpenMarket(ARuinmatesCharacter* InCharacter, ARuinmatesMerchant* InMerchant)
+{
+	if (!IsValid(InCharacter) || !IsValid(InMerchant))
+	{
+		return;
+	}
+
+	CloseSlotMenu();
+	UnbindSources();
+	bLive = false;
+	bMarketLive = true;
+	bClosing = false;
+	LiveCharacter = InCharacter;
+	LiveMerchant = InMerchant;
+	LiveContainer = nullptr;
+	ActiveFilter = NAME_None;
+	VisualSelected = INDEX_NONE;
+	VisualQuantity = 1;
+	bVisualSell = false;
+	if (SquadRadio)
+	{
+		SquadRadio->SetPreview(false);
+	}
+	if (CharacterPreview)
+	{
+		CharacterPreview->SetCharacter(nullptr);
+	}
+
+	SetVisualMode(3);
+	BindSources();
+	RefreshMarketLive();
+	BeginOpenFade();
+}
+
+bool URuinmatesTerminalScreen::IsMarketSelectionValid() const
+{
+	if (bVisualSell)
+	{
+		return Page.Backpack.IsValidIndex(VisualSelected)
+			&& Page.Backpack[VisualSelected].State == ERuinmatesTerminalSlotState::Revealed;
+	}
+	return MarketGoodsIds.IsValidIndex(VisualSelected);
+}
+
+void URuinmatesTerminalScreen::ClearMarketSelection()
+{
+	VisualSelected = INDEX_NONE;
+	VisualQuantity = 1;
+}
+
+void URuinmatesTerminalScreen::RefreshMarketLive()
+{
+	ARuinmatesCharacter* Character = LiveCharacter.Get();
+	ARuinmatesMerchant* Merchant = LiveMerchant.Get();
+	if (!bMarketLive || !IsValid(Character) || !IsValid(Merchant))
+	{
+		return;
+	}
+
+	URuinmatesBackpackComponent* Backpack = Character->GetBackpack();
+	URuinmatesItemDatabaseSubsystem* Database = URuinmatesItemDatabaseSubsystem::Get(this);
+	ARuinmatesGameState* GameState = GetWorld() ? GetWorld()->GetGameState<ARuinmatesGameState>() : nullptr;
+	if (GameState)
+	{
+		LiveGameState = GameState;
+	}
+
+	Page.PageTitle = NSLOCTEXT("RuinMatesUI", "MarketTitleV4", "物资交易 / MARKET");
+	Page.PackTitle = Backpack ? RuinmatesItems::GetBackpackTierName(Backpack->GetTier())
+		: NSLOCTEXT("RuinMatesUI", "PackMissing", "背包");
+	Page.BackpackTierName = Page.PackTitle;
+	Page.Capacity = Backpack ? Backpack->GetCapacity() : 0;
+	Page.Used = Backpack ? Backpack->GetUsedSlotCount() : 0;
+	Page.LootValue = Backpack ? Backpack->GetLootValue() : 0;
+	Page.Funds = GameState ? GameState->GetSharedFunds() : -1;
+	Page.bRightIsContainer = false;
+
+	// Left column always shows the real backpack, empty cells included.
+	Page.Backpack.Reset();
+	const TArray<FRuinmatesItemStack> NoSlots;
+	const TArray<FRuinmatesItemStack>& Slots = Backpack ? Backpack->GetSlots() : NoSlots;
+	const int32 SlotCount = FMath::Max(Page.Capacity, Slots.Num());
+	for (int32 Index = 0; Index < SlotCount; ++Index)
+	{
+		FRuinmatesTerminalSlotView View;
+		if (Slots.IsValidIndex(Index))
+		{
+			MakeSlotView(Slots[Index], Index, View);
+		}
+		else
+		{
+			View.StableIndex = Index;
+			View.State = ERuinmatesTerminalSlotState::Empty;
+		}
+		View.bSelected = bVisualSell && Index == VisualSelected;
+		Page.Backpack.Add(View);
+	}
+
+	ApplyPageText();
+	RebuildSlots();
+	if (RightSwitcher)
+	{
+		RightSwitcher->SetActiveWidgetIndex(2);
+	}
+	if (VisualBuy) VisualBuy->SetSelected(!bVisualSell);
+	if (VisualSell) VisualSell->SetSelected(bVisualSell);
+
+	// Right column: merchant goods in buy mode, the revealed backpack stacks in sell mode.
+	TArray<FRuinmatesTerminalSlotView> Goods;
+	MarketGoodsIds.Reset();
+	if (!bVisualSell)
+	{
+		for (const FName& ItemId : Merchant->GetMerchantItems())
+		{
+			const FRuinmatesItemRow* Row = Database ? Database->FindItemDefinition(ItemId) : nullptr;
+			if (!Row)
+			{
+				continue;
+			}
+			FRuinmatesTerminalSlotView View;
+			View.StableIndex = Goods.Num();
+			View.State = ERuinmatesTerminalSlotState::Revealed;
+			View.ItemId = ItemId;
+			View.Name = Row->DisplayName;
+			View.Count = 1;
+			View.Quality = Row->Quality;
+			View.Description = Row->Description;
+			View.UnitValue = Database->GetItemBuyPrice(ItemId);
+			View.Icon = Row->Icon.ToSoftObjectPath();
+			View.bSelected = VisualSelected == View.StableIndex;
+			Goods.Add(View);
+			MarketGoodsIds.Add(ItemId);
+		}
+	}
+	else
+	{
+		for (const FRuinmatesTerminalSlotView& View : Page.Backpack)
+		{
+			if (View.State == ERuinmatesTerminalSlotState::Revealed)
+			{
+				Goods.Add(View);
+			}
+		}
+	}
+
+	SyncGrid(MarketGrid, MarketCells, Goods, 3, true);
+	for (URuinmatesTerminalItemSlot* Cell : MarketCells)
+	{
+		if (!Cell)
+		{
+			continue;
+		}
+		Cell->Configure(FVector2D(168.f, 112.f), ERuinmatesTerminalSlotLayout::Grid);
+		Cell->OnSlotClicked.RemoveAll(this);
+		Cell->OnSlotClicked.AddDynamic(this, &URuinmatesTerminalScreen::HandleMarketSelected);
+	}
+
+	if (MarketGoods)
+	{
+		MarketGoods->SetVisibility(bVisualSell ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
+	}
+	if (SellPrompt)
+	{
+		SellPrompt->SetVisibility(bVisualSell ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+		SellPrompt->SetText(NSLOCTEXT("RuinMatesUI", "SellPromptLive", "选择左侧背包中的物资"));
+	}
+
+	// A stale selection (item consumed elsewhere, sold out, slot changed) is cleared, never kept.
+	if (VisualSelected != INDEX_NONE && !IsMarketSelectionValid())
+	{
+		ClearMarketSelection();
+	}
+
+	FText SelectedName = NSLOCTEXT("RuinMatesUI", "SelectTradeItem", "未选择物资");
+	int32 UnitPrice = 0;
+	int32 MaxQuantity = 1;
+	if (bVisualSell && Page.Backpack.IsValidIndex(VisualSelected))
+	{
+		const FRuinmatesTerminalSlotView& View = Page.Backpack[VisualSelected];
+		SelectedName = View.Name;
+		UnitPrice = Database ? Database->GetItemSellPrice(View.ItemId) : 0;
+		MaxQuantity = FMath::Max(1, View.Count);
+	}
+	else if (!bVisualSell && MarketGoodsIds.IsValidIndex(VisualSelected))
+	{
+		const FRuinmatesItemRow* Row = Database ? Database->FindItemDefinition(MarketGoodsIds[VisualSelected]) : nullptr;
+		if (Row)
+		{
+			SelectedName = Row->DisplayName;
+			UnitPrice = Database->GetItemBuyPrice(MarketGoodsIds[VisualSelected]);
+			MaxQuantity = 99;
+		}
+	}
+
+	const bool bHasSelection = IsMarketSelectionValid();
+	VisualQuantity = FMath::Clamp(VisualQuantity, 1, FMath::Max(1, MaxQuantity));
+	if (MarketName) MarketName->SetText(bHasSelection ? SelectedName : NSLOCTEXT("RuinMatesUI", "SelectTradeItem", "未选择物资"));
+	if (MarketPrice) MarketPrice->SetText(FText::AsNumber(UnitPrice));
+	if (MarketQuantity) MarketQuantity->SetText(FText::AsNumber(VisualQuantity));
+	if (MarketTotal) MarketTotal->SetText(FText::Format(NSLOCTEXT("RuinMatesUI", "TradeLiveTotal", "合计  {0}"),
+		FText::AsNumber(UnitPrice * VisualQuantity)));
+	if (MarketConfirmButton)
+	{
+		MarketConfirmButton->SetIsEnabled(bHasSelection);
+		if (UTextBlock* Label = Cast<UTextBlock>(MarketConfirmButton->GetContent()))
+		{
+			Label->SetText(bVisualSell ? NSLOCTEXT("RuinMatesUI", "SellV4", "出售") : NSLOCTEXT("RuinMatesUI", "BuyV4", "购买"));
+		}
+	}
+	if (MarketStatusText && MarketStatusText->GetText().IsEmpty())
+	{
+		MarketStatusText->SetText(bHasSelection
+			? FText::Format(NSLOCTEXT("RuinMatesUI", "TradeHintQty", "单价 {0} × {1}"), FText::AsNumber(UnitPrice), FText::AsNumber(VisualQuantity))
+			: NSLOCTEXT("RuinMatesUI", "TradeHintPick", "选择商品后确认交易"));
+		MarketStatusText->SetColorAndOpacity(FSlateColor(RuinmatesUI::TextWeak()));
+	}
+}
+
+void URuinmatesTerminalScreen::ShowTradeResult(bool bSuccess, const FText& Message)
+{
+	if (!bMarketLive)
+	{
+		return;
+	}
+	if (MarketStatusText)
+	{
+		MarketStatusText->SetText(Message);
+		MarketStatusText->SetColorAndOpacity(FSlateColor(bSuccess ? RuinmatesUI::Success() : RuinmatesUI::Error()));
+	}
+	RefreshMarketLive();
+}
+
+void URuinmatesTerminalScreen::HandleMarketBuyMode()
+{
+	if (!bMarketLive)
+	{
+		return;
+	}
+	bVisualSell = false;
+	ClearMarketSelection();
+	if (MarketStatusText) MarketStatusText->SetText(FText::GetEmpty());
+	RefreshMarketLive();
+}
+
+void URuinmatesTerminalScreen::HandleMarketSellMode()
+{
+	if (!bMarketLive)
+	{
+		return;
+	}
+	bVisualSell = true;
+	ClearMarketSelection();
+	if (MarketStatusText) MarketStatusText->SetText(FText::GetEmpty());
+	RefreshMarketLive();
+}
+
+void URuinmatesTerminalScreen::HandleMarketSelected(int32 Index)
+{
+	if (!bMarketLive)
+	{
+		return;
+	}
+	VisualSelected = Index;
+	VisualQuantity = 1;
+	if (MarketStatusText) MarketStatusText->SetText(FText::GetEmpty());
+	RefreshMarketLive();
+}
+
+void URuinmatesTerminalScreen::HandleMarketQuantityUp()
+{
+	if (!bMarketLive)
+	{
+		return;
+	}
+	++VisualQuantity;
+	if (MarketStatusText) MarketStatusText->SetText(FText::GetEmpty());
+	RefreshMarketLive();
+}
+
+void URuinmatesTerminalScreen::HandleMarketQuantityDown()
+{
+	if (!bMarketLive)
+	{
+		return;
+	}
+	VisualQuantity = FMath::Max(1, VisualQuantity - 1);
+	if (MarketStatusText) MarketStatusText->SetText(FText::GetEmpty());
+	RefreshMarketLive();
+}
+
+void URuinmatesTerminalScreen::HandleMarketConfirm()
+{
+	if (!bMarketLive || !IsMarketSelectionValid())
+	{
+		return;
+	}
+	ARuinmatesCharacter* Character = LiveCharacter.Get();
+	if (!IsValid(Character))
+	{
+		return;
+	}
+
+	// Client only sends id/slot + quantity; prices and validation stay server side.
+	if (bVisualSell)
+	{
+		Character->RequestSellItem(VisualSelected, VisualQuantity);
+	}
+	else if (MarketGoodsIds.IsValidIndex(VisualSelected))
+	{
+		Character->RequestBuyItem(MarketGoodsIds[VisualSelected], VisualQuantity);
+	}
+
+	if (MarketStatusText)
+	{
+		MarketStatusText->SetText(NSLOCTEXT("RuinMatesUI", "TradePending", "正在处理…"));
+		MarketStatusText->SetColorAndOpacity(FSlateColor(RuinmatesUI::TextWeak()));
+	}
+}

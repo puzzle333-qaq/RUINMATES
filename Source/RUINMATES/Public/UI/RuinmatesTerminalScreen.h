@@ -21,6 +21,7 @@ class ARuinmatesCharacter;
 class ARuinmatesGameState;
 class URuinmatesTerminalItemSlot;
 class ARuinmatesLootContainer;
+class ARuinmatesMerchant;
 class URuinmatesCharacterPreview;
 class URuinmatesSquadRadio;
 
@@ -37,6 +38,15 @@ public:
 	void ShowPreview(bool bSearchPage);
 	/** Opens an isolated V4 visual page: inventory, search, storage, market, components. */
 	void ShowVisualPreview(int32 Mode, int32 PreviewCapacity = 20);
+
+	/** Opens the V4 market bound to a live merchant. Reuses the existing trade backend. */
+	void OpenMarket(ARuinmatesCharacter* InCharacter, ARuinmatesMerchant* InMerchant);
+
+	/** True while the market is bound to a live merchant (not the isolated preview). */
+	bool IsMarketLive() const { return bMarketLive; }
+
+	/** Server trade result forwarded by the owning character. */
+	void ShowTradeResult(bool bSuccess, const FText& Message);
 
 protected:
 	virtual void NativeOnInitialized() override;
@@ -61,6 +71,21 @@ protected:
 	UFUNCTION() void PreviewQuantityUp();
 	UFUNCTION() void PreviewQuantityDown();
 	UFUNCTION() void PreviewMarketSelected(int32 Index);
+
+	// ---- Live market ------------------------------------------------------------------------
+	/** Builds one display view from a real stack (single implementation shared with the market). */
+	void MakeSlotView(const FRuinmatesItemStack& Stack, int32 StableIndex, FRuinmatesTerminalSlotView& OutView) const;
+
+	UFUNCTION() void HandleMarketBuyMode();
+	UFUNCTION() void HandleMarketSellMode();
+	UFUNCTION() void HandleMarketQuantityUp();
+	UFUNCTION() void HandleMarketQuantityDown();
+	UFUNCTION() void HandleMarketConfirm();
+	UFUNCTION() void HandleMarketSelected(int32 Index);
+
+	void RefreshMarketLive();
+	void ClearMarketSelection();
+	bool IsMarketSelectionValid() const;
 	void BuildHeader(UVerticalBox* Column);
 	void BuildTabs(UVerticalBox* Column);
 	void BuildBody(UVerticalBox* Column);
@@ -295,6 +320,18 @@ protected:
 	UPROPERTY() TObjectPtr<UTextBlock> CategoryEmptyHint;
 	UPROPERTY() TObjectPtr<URuinmatesCharacterPreview> CharacterPreview;
 	UPROPERTY() TObjectPtr<URuinmatesSquadRadio> SquadRadio;
+
+	// ---- Live market (V4 page bound to a merchant) ------------------------------------------
+	/** Confirm button and one line status area; the rest of the market page is shared with the preview. */
+	UPROPERTY() TObjectPtr<class URuinmatesTechButton> MarketConfirmButton;
+	UPROPERTY() TObjectPtr<UTextBlock> MarketStatusText;
+
+	/** Item ids currently shown in the goods grid (empty in sell mode). */
+	TArray<FName> MarketGoodsIds;
+
+	TWeakObjectPtr<ARuinmatesMerchant> LiveMerchant;
+	bool bMarketLive = false;
+
 	int32 VisualMode = 0;
 	int32 VisualQuantity = 1;
 	int32 VisualSelected = INDEX_NONE;
