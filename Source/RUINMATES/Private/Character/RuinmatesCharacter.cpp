@@ -861,7 +861,7 @@ void ARuinmatesCharacter::UpdateSearchDistance()
 	}
 }
 
-void ARuinmatesCharacter::OpenInventoryScreen()
+void ARuinmatesCharacter::OpenInventoryScreen(ARuinmatesMerchant* MarketMerchant)
 {
 	APlayerController* PlayerController = Cast<APlayerController>(GetController());
 	if (!IsLocallyControlled() || !PlayerController)
@@ -880,7 +880,14 @@ void ARuinmatesCharacter::OpenInventoryScreen()
 	{
 		InventoryScreen->AddToViewport(30);
 	}
-	InventoryScreen->OpenFor(this, ActiveSearch);
+	if (IsValid(MarketMerchant))
+	{
+		InventoryScreen->OpenMarket(this, MarketMerchant);
+	}
+	else
+	{
+		InventoryScreen->OpenFor(this, ActiveSearch);
+	}
 	StopAim();
 	FInputModeUIOnly InputMode;
 	InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
@@ -1016,7 +1023,8 @@ void ARuinmatesCharacter::BeginTrade(ARuinmatesMerchant* Merchant)
 	ActiveMerchant = Merchant;
 	if (IsLocallyControlled())
 	{
-		OpenTradeScreen();
+		// The V4 market terminal replaces the legacy trade window; it reuses the same backend.
+		OpenInventoryScreen(Merchant);
 	}
 }
 
@@ -1027,7 +1035,7 @@ void ARuinmatesCharacter::EndTrade()
 		ActiveMerchant = nullptr;
 		if (IsLocallyControlled())
 		{
-			CloseTradeScreen();
+			CloseMarketScreens();
 		}
 	}
 	else
@@ -1041,8 +1049,19 @@ void ARuinmatesCharacter::Server_EndTrade_Implementation()
 	ActiveMerchant = nullptr;
 	if (IsLocallyControlled())
 	{
-		CloseTradeScreen();
+		CloseMarketScreens();
 	}
+}
+
+void ARuinmatesCharacter::CloseMarketScreens()
+{
+	// The V4 market terminal replaces the legacy trade window; both are closed here so no stale
+	// trading UI survives a server-side trade end (distance check, disconnect, ESC).
+	if (IsValid(InventoryScreen) && InventoryScreen->IsInViewport() && InventoryScreen->IsMarketLive())
+	{
+		CloseInventoryScreen();
+	}
+	CloseTradeScreen();
 }
 
 void ARuinmatesCharacter::OnRep_ActiveMerchant()
@@ -1053,11 +1072,11 @@ void ARuinmatesCharacter::OnRep_ActiveMerchant()
 	}
 	if (IsValid(ActiveMerchant))
 	{
-		OpenTradeScreen();
+		OpenInventoryScreen(ActiveMerchant);
 	}
 	else
 	{
-		CloseTradeScreen();
+		CloseMarketScreens();
 	}
 }
 
@@ -1256,7 +1275,12 @@ void ARuinmatesCharacter::Server_SellItem_Implementation(int32 SlotIndex, int32 
 
 void ARuinmatesCharacter::Client_TradeResult_Implementation(bool bSuccess, const FText& Message)
 {
-	if (IsValid(TradeScreen))
+	// The V4 market is the shipping trade UI; the legacy window stays as a fallback path.
+	if (IsValid(InventoryScreen) && InventoryScreen->IsInViewport() && InventoryScreen->IsMarketLive())
+	{
+		InventoryScreen->ShowTradeResult(bSuccess, Message);
+	}
+	else if (IsValid(TradeScreen))
 	{
 		TradeScreen->ShowResult(bSuccess, Message);
 	}

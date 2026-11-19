@@ -199,7 +199,7 @@ protected:
 	void UpdateCrosshairVisibility();
 	void BindAimInput(UInputComponent* PlayerInputComponent);
 	void BindInventoryInput(UInputComponent* PlayerInputComponent);
-	void OpenInventoryScreen();
+	void OpenInventoryScreen(ARuinmatesMerchant* MarketMerchant = nullptr);
 	void CloseInventoryScreen();
 	void EndSearch();
 	void UpdateSearchDistance();
@@ -272,6 +272,8 @@ protected:
 	void Client_TradeResult(bool bSuccess, const FText& Message);
 
 	void OpenTradeScreen();
+	/** Closes whichever market/trade window is open (V4 terminal first, legacy window as fallback). */
+	void CloseMarketScreens();
 	void CloseTradeScreen();
 
 	// Server only: merchant still valid and in range.
