@@ -102,6 +102,10 @@ void ARuinmatesCharacter::BeginPlay()
 		HipSocketOffset = CameraBoom->SocketOffset;
 		HipTargetOffset = CameraBoom->TargetOffset;
 	}
+	if (IsValid(FollowCamera))
+	{
+		HipFieldOfView = FollowCamera->FieldOfView;
+	}
 	if (IsValid(WeaponPose))
 	{
 		WeaponPose->SetBodyMesh(GetMesh());
@@ -593,6 +597,10 @@ void ARuinmatesCharacter::UpdateAimCamera(float DeltaSeconds)
 	CameraBoom->TargetArmLength = FMath::Lerp(HipArmLength, AimArmLength, AimCameraAlpha);
 	CameraBoom->SocketOffset = FMath::Lerp(HipSocketOffset, AimSocketOffset, AimCameraAlpha);
 	CameraBoom->TargetOffset = FMath::Lerp(HipTargetOffset, AimTargetOffset, AimCameraAlpha);
+	if (IsValid(FollowCamera))
+	{
+		FollowCamera->SetFieldOfView(FMath::Lerp(HipFieldOfView, AimFieldOfView, AimCameraAlpha));
+	}
 }
 
 void ARuinmatesCharacter::EnsureCrosshair()

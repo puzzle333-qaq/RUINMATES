@@ -223,6 +223,10 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RuinMates|Camera", meta = (ClampMin = "0.1"))
 	float AimCameraInterpSpeed = 8.f;
 
+	/** Target horizontal field of view for the shoulder camera. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RuinMates|Camera", meta = (ClampMin = "45", ClampMax = "120"))
+	float AimFieldOfView = 75.f;
+
 	UPROPERTY(ReplicatedUsing = OnRep_WantsToSprint)
 	bool bWantsToSprint = false;
 
@@ -328,6 +332,7 @@ protected:
 	void PlayBodyMontage(UAnimMontage* Montage);
 
 	float HipArmLength = 400.f;
+	float HipFieldOfView = 90.f;
 	FVector HipSocketOffset = FVector::ZeroVector;
 	FVector HipTargetOffset = FVector::ZeroVector;
 	float AimCameraAlpha = 0.f;
