@@ -3,6 +3,7 @@
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
 #include "OnlineSubsystem.h"
+#include "Misc/PackageName.h"
 #include "Save/RuinmatesSaveSubsystem.h"
 
 void URuinmatesSessionSubsystem::Initialize(FSubsystemCollectionBase& Collection)
@@ -82,20 +83,25 @@ bool URuinmatesSessionSubsystem::HostServerTravel(FName MapName, ERuinmatesTrave
 
 	UGameInstance* GI = GetGameInstance();
 	UWorld* World = GI ? GI->GetWorld() : nullptr;
-	if (!IsValid(World))
+	if (!IsValid(World) || World->GetNetMode() == NM_Client)
 	{
 		StatusText = TEXT("没有可用的世界，无法 ServerTravel。");
+		return false;
+	}
+	if (!FPackageName::DoesPackageExist(MapName.ToString()))
+	{
+		StatusText = TEXT("目的地图不存在，无法出发。");
 		return false;
 	}
 
 	if (URuinmatesSaveSubsystem* Save = GI->GetSubsystem<URuinmatesSaveSubsystem>())
 	{
-		Save->CapturePartyFromWorld(World);
-		Save->SaveCampaign();
+		if (!Save->CapturePartyFromWorld(World) || !Save->SaveCampaign())
+		{ StatusText = TEXT("保存失败，已取消切图。"); return false; }
 	}
 
 	const FString Url = FString::Printf(TEXT("%s?listen"), *MapName.ToString());
-	World->ServerTravel(Url, true);
+	if (!World->ServerTravel(Url, true)) { StatusText = TEXT("ServerTravel 请求失败。"); return false; }
 	TravelStage = NewStage;
 	StatusText = FString::Printf(TEXT("正在前往 %s（Listen Server）。联机旅行尚未实测。"), *MapName.ToString());
 	return true;

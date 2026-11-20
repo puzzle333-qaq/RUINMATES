@@ -94,10 +94,10 @@ int32 URuinmatesAnimSetupCommandlet::Main(const FString& Params)
 		FireMontage->SlotAnimTracks[0].SlotName = TEXT("DefaultSlot");
 		UE_LOG(LogTemp, Display, TEXT("Fire montage slot set to DefaultSlot"));
 	}
-	if (!WeaponData->ThirdPersonMontages.FireMontage)
+	if (!WeaponData->ThirdPersonMontages.Fire)
 	{
 		WeaponData->Modify();
-		WeaponData->ThirdPersonMontages.FireMontage = FireMontage;
+		WeaponData->ThirdPersonMontages.Fire = FireMontage;
 		UE_LOG(LogTemp, Display, TEXT("Assigned fire montage on DA_WeaponDATA"));
 	}
 

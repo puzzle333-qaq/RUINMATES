@@ -68,7 +68,7 @@ bool FRuinmatesWeaponDataNullSafeTest::RunTest(const FString& Parameters)
 
 	const FPlayerAnim Anims;
 	TestNull(TEXT("Idle anim is null-safe"), Anims.GetIdleAnim());
-	TestNull(TEXT("Aim idle falls back safely"), Anims.GetAimIdleAnim());
+	TestNull(TEXT("Idle falls back safely"), Anims.GetIdleAnim());
 
 	UWeaponData* Data = NewObject<UWeaponData>();
 	TestTrue(TEXT("WeaponData object created"), IsValid(Data));

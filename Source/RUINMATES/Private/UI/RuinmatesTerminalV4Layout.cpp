@@ -335,7 +335,7 @@ void URuinmatesTerminalScreen::BuildV4Chrome()
 
 	UCanvasPanel* MarketPage = WidgetTree->ConstructWidget<UCanvasPanel>();
 	RightSwitcher->AddChild(MarketPage);
-	At(MarketPage, Text(WidgetTree, NAME_None, NSLOCTEXT("RuinMatesUI", "MerchantPreview", "物资商人"), 24, true), 24, 24, 576, 32);
+	At(MarketPage, Text(WidgetTree, TEXT("MarketMerchantTitle"), NSLOCTEXT("RuinMatesUI", "MerchantPreview", "物资商人"), 24, true), 24, 24, 576, 32);
 	URuinmatesTechButton* Buy = Button(WidgetTree, NSLOCTEXT("RuinMatesUI", "BuyV4", "购买"), true);
 	URuinmatesTechButton* Sell = Button(WidgetTree, NSLOCTEXT("RuinMatesUI", "SellV4", "出售"), true);
 	VisualBuy = Buy;
@@ -575,6 +575,9 @@ void URuinmatesTerminalScreen::OpenMarket(ARuinmatesCharacter* InCharacter, ARui
 	}
 
 	SetVisualMode(3);
+	// Live trading must not expose the isolated preview pages or claim to use simulated data.
+	if (PreviewNavigation) PreviewNavigation->SetVisibility(ESlateVisibility::Collapsed);
+	if (PreviewBadge) PreviewBadge->SetVisibility(ESlateVisibility::Collapsed);
 	BindSources();
 	RefreshMarketLive();
 	BeginOpenFade();
@@ -605,6 +608,8 @@ void URuinmatesTerminalScreen::RefreshMarketLive()
 	{
 		return;
 	}
+	if (UTextBlock* Title=WidgetTree ? Cast<UTextBlock>(WidgetTree->FindWidget(TEXT("MarketMerchantTitle"))) : nullptr)
+		Title->SetText(Merchant->GetMerchantName());
 
 	URuinmatesBackpackComponent* Backpack = Character->GetBackpack();
 	URuinmatesItemDatabaseSubsystem* Database = URuinmatesItemDatabaseSubsystem::Get(this);

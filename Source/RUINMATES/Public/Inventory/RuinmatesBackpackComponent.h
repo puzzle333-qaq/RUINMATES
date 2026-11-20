@@ -26,7 +26,16 @@ public:
 	ERuinmatesBackpackTier GetTier() const { return Tier; }
 
 	UFUNCTION(BlueprintPure, Category = "RuinMates|Backpack")
-	int32 GetCapacity() const { return RuinmatesItems::GetBackpackCapacity(Tier); }
+	int32 GetCapacity() const { return CapacityOverride > 0 ? CapacityOverride : RuinmatesItems::GetBackpackCapacity(Tier); }
+
+	/** Authority only. Configures 1..512 slots; refuses a shrink that would discard any held stack. */
+	bool SetCapacityOverride(int32 NewCapacity);
+
+	/** Authority-only complete saved inventory restore; validates before publishing tier/grid together. */
+	bool RestoreSavedInventory(ERuinmatesBackpackTier SavedTier, int32 SavedOverride, const TArray<FRuinmatesItemStack>& SavedSlots);
+
+	/** Zero means the existing tier determines capacity; positive values configure a shared grid. */
+	int32 GetCapacityOverride() const { return CapacityOverride; }
 
 	UFUNCTION(BlueprintPure, Category = "RuinMates|Backpack")
 	int32 GetUsedSlotCount() const;
@@ -39,6 +48,35 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "RuinMates|Backpack")
 	const TArray<FRuinmatesItemStack>& GetSlots() const { return Slots; }
+
+	/** Counts all positive units with this stable ID, saturating at INT32_MAX rather than overflowing. */
+	int32 CountItem(FName ItemId) const;
+
+	/**
+	 * Authority only. Validates revision, capacity and every item against the loaded item database.
+	 * Returns canonical static fields and capacity-sized slots without changing live storage.
+	 * Unknown IDs, malformed empty slots and oversized stacks fail; no legacy-name fallback is used.
+	 * Output remains unchanged on failure, and may safely alias InSlots.
+	 */
+	bool PrepareSlotsForTransaction(const TArray<FRuinmatesItemStack>& InSlots, uint32 ExpectedRevision,
+		TArray<FRuinmatesItemStack>& OutCanonical) const;
+
+	/**
+	 * Authority-only native transaction primitive; never exposed as a client inventory replacement RPC.
+	 * Validates before replacing. With bNotify=false the revision and events stay unchanged, so a
+	 * synchronous manager can roll back at the same revision. Never yield between staging/publishing.
+	 */
+	bool ReplaceSlotsForTransaction(const TArray<FRuinmatesItemStack>& InSlots, uint32 ExpectedRevision, bool bNotify = true);
+
+	/** Publishes a staged replacement exactly once: advances revision and emits one OnChanged. */
+	void PublishTransactionChange();
+
+	/**
+	 * Pure all-or-nothing recipe consumption across matching stacks, independent of quality.
+	 * Costs must already be aggregated by ItemId (TMap keys are unique); empty costs are a free action.
+	 * Invalid IDs/counts, malformed stacks or insufficient totals leave InOutSlots untouched.
+	 */
+	static bool ConsumeItemsFromSlots(TArray<FRuinmatesItemStack>& InOutSlots, const TMap<FName, int32>& Costs);
 
 	/** Server only. Adds as many as will fit. Returns how many were accepted. */
 	int32 TryAdd(const FRuinmatesItemStack& Incoming);
@@ -101,11 +139,18 @@ protected:
 	UPROPERTY(EditAnywhere, ReplicatedUsing = OnRep_Tier, Category = "RuinMates|Backpack")
 	ERuinmatesBackpackTier Tier = ERuinmatesBackpackTier::Issue;
 
+	/** Shared storage reuses this same grid; zero preserves every existing personal tier capacity. */
+	UPROPERTY(ReplicatedUsing = OnRep_Tier)
+	int32 CapacityOverride = 0;
+
 	UPROPERTY(ReplicatedUsing = OnRep_Slots)
 	TArray<FRuinmatesItemStack> Slots;
 
 	UPROPERTY(Replicated)
 	uint32 Revision = 0;
+
+	/** A synchronous manager stages one or more replacements before one final publication. */
+	bool bTransactionChangePending = false;
 
 	UFUNCTION()
 	void OnRep_Tier();

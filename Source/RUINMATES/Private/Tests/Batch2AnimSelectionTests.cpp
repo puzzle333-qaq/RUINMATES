@@ -37,25 +37,21 @@ bool FRuinmatesAnimSelectionTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Crouch without a crouch clip still has a blend space"), BareCrouch.BlendSpace, Unarmed);
 
 	FPlayerAnim Pistol;
-	Pistol.IdleAnim = PistolIdle;
-	Pistol.AimIdleAnim = PistolAim;
-	Pistol.Strafe_Walking = Unarmed;
-	Pistol.AimOffset_Hip = AimOffset;
-	Pistol.AimOffset_Aim = AimOffset;
-	Pistol.Strafe_Crouching = AimOffset;
+	Pistol.Idle = PistolIdle;
+	Pistol.AimOffset = AimOffset;
 
 	const FRuinmatesAnimChoice Armed = URuinmatesAnimInstance::ChooseAnims(Pistol, false, false, false, 0.f, Unarmed, Idle, Jump, Fall);
-	TestEqual(TEXT("Weapon idle replaces the unarmed idle"), Armed.Sequence, PistolIdle);
-	TestEqual(TEXT("Weapon strafe blend space is used"), Armed.BlendSpace, Unarmed);
-	TestEqual(TEXT("Hip aim offset is used when not aiming"), Armed.AimOffset, AimOffset);
+	TestEqual(TEXT("Weapon idle replaces the unarmed idle"), Armed.Sequence, static_cast<UAnimSequence*>(PistolIdle));
+	TestEqual(TEXT("Locomotion is global, not per weapon"), Armed.BlendSpace, Unarmed);
+	TestEqual(TEXT("The weapon aim offset is used"), Armed.AimOffset, static_cast<UBlendSpace*>(AimOffset));
 
 	const FRuinmatesAnimChoice Aimed = URuinmatesAnimInstance::ChooseAnims(Pistol, false, false, true, 0.f, Unarmed, Idle, Jump, Fall);
-	TestEqual(TEXT("Aiming uses the weapon aim idle"), Aimed.Sequence, PistolAim);
+	TestEqual(TEXT("Aiming keeps the same weapon idle"), Aimed.Sequence, static_cast<UAnimSequence*>(PistolIdle));
+	TestEqual(TEXT("Aiming keeps the same aim offset"), Aimed.AimOffset, static_cast<UBlendSpace*>(AimOffset));
 
 	const FRuinmatesAnimChoice CrouchClip = URuinmatesAnimInstance::ChooseAnims(Pistol, true, false, false, 0.f, Unarmed, Idle, Jump, Fall);
-	TestEqual(TEXT("Crouch blend space comes from the weapon data"), CrouchClip.BlendSpace, static_cast<UBlendSpace*>(AimOffset));
-	TestFalse(TEXT("A real crouch clip does not also drop the pelvis"), CrouchClip.bApplyCrouchOffset);
-
+	TestEqual(TEXT("Crouch keeps the global blend space"), CrouchClip.BlendSpace, Unarmed);
+	TestTrue(TEXT("No per-weapon crouch clip asks for a pelvis drop"), CrouchClip.bApplyCrouchOffset);
 	const FRuinmatesAnimChoice Air = URuinmatesAnimInstance::ChooseAnims(Pistol, false, true, false, 100.f, Unarmed, Idle, Jump, Fall);
 	TestEqual(TEXT("Rising uses the jump sequence"), Air.Sequence, Jump);
 	const FRuinmatesAnimChoice Falling = URuinmatesAnimInstance::ChooseAnims(Pistol, false, true, false, -100.f, Unarmed, Idle, Jump, Fall);

@@ -13,6 +13,7 @@ namespace
 	TOptional<FIntPoint> PreviousWindowSize;
 	TOptional<TEnumAsByte<EPlayNetMode>> PreviousNetMode;
 	TOptional<int32> PreviousClientCount;
+	TOptional<bool> PreviousSingleProcess;
 }
 
 /** Resize the real PIE client area; r.SetRes is ignored by editor play windows. */
@@ -72,6 +73,23 @@ static FAutoConsoleCommand GStartV4CapturePIE(
 		GEditor->RequestPlaySession(Params);
 	}));
 
+/** Two genuine in-process network worlds, preserving the user's existing PIE settings. */
+static FAutoConsoleCommand GStartHubNetworkPIE(TEXT("Ruinmates.Editor.StartHubNetwork"),
+	TEXT("Start a two-player Listen Server PIE for Hub replication/RPC checks."),
+	FConsoleCommandDelegate::CreateStatic([]()
+	{
+		if (!GEditor || GEditor->PlayWorld) return;
+		auto* Settings=GetMutableDefault<ULevelEditorPlaySettings>();
+		PreviousWindowSize=FIntPoint(Settings->NewWindowWidth,Settings->NewWindowHeight);
+		EPlayNetMode Mode; Settings->GetPlayNetMode(Mode); PreviousNetMode=Mode;
+		int32 Count; Settings->GetPlayNumberOfClients(Count); PreviousClientCount=Count;
+		bool Single; Settings->GetRunUnderOneProcess(Single); PreviousSingleProcess=Single;
+		Settings->SetRunUnderOneProcess(true); Settings->SetPlayNetMode(PIE_ListenServer); Settings->SetPlayNumberOfClients(2);
+		Settings->NewWindowWidth=960; Settings->NewWindowHeight=540;
+		FRequestPlaySessionParams Params; Params.WorldType=EPlaySessionWorldType::PlayInEditor;
+		GEditor->RequestPlaySession(Params);
+	}));
+
 static FAutoConsoleCommand GRestoreV4CaptureSettings(
 	TEXT("Ruinmates.Editor.RestoreUICaptureSettings"),
 	TEXT("Restore transient play settings after UI captures."),
@@ -86,4 +104,5 @@ static FAutoConsoleCommand GRestoreV4CaptureSettings(
 		}
 		if (PreviousNetMode) { Settings->SetPlayNetMode(PreviousNetMode.GetValue()); PreviousNetMode.Reset(); }
 		if (PreviousClientCount) { Settings->SetPlayNumberOfClients(PreviousClientCount.GetValue()); PreviousClientCount.Reset(); }
+		if (PreviousSingleProcess) { Settings->SetRunUnderOneProcess(PreviousSingleProcess.GetValue()); PreviousSingleProcess.Reset(); }
 	}));

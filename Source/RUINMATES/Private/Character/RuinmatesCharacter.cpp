@@ -1,4 +1,6 @@
 #include "Character/RuinmatesCharacter.h"
+#include "Hub/RuinmatesHubInteraction.h"
+#include "Hub/RuinmatesHubBlackMarket.h"
 
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -74,6 +76,7 @@ ARuinmatesCharacter::ARuinmatesCharacter()
 
 	WeaponInventory = CreateDefaultSubobject<UWeaponInventoryComponent>(TEXT("WeaponInventory"));
 	Backpack = CreateDefaultSubobject<URuinmatesBackpackComponent>(TEXT("Backpack"));
+	HubInteraction = CreateDefaultSubobject<URuinmatesHubInteractionComponent>(TEXT("HubInteraction"));
 }
 
 void ARuinmatesCharacter::BindStatsDelegates()
@@ -615,7 +618,7 @@ void ARuinmatesCharacter::UpdateAimCamera(float DeltaSeconds)
 
 void ARuinmatesCharacter::EnsureCrosshair()
 {
-	if (!IsLocallyControlled() || CrosshairWidget)
+	if (!IsLocallyControlled() || CrosshairWidget || !GetWorld() || !GetWorld()->GetGameViewport())
 	{
 		return;
 	}
@@ -1261,6 +1264,11 @@ bool ARuinmatesCharacter::ValidateTradeState(ARuinmatesMerchant*& OutMerchant)
 	ARuinmatesMerchant* Merchant = ActiveMerchant;
 	if (!IsValid(Merchant) || !IsValid(Backpack))
 	{
+		return false;
+	}
+	if (auto* BlackMarket = Cast<ARuinmatesHubBlackMarket>(Merchant); BlackMarket && !BlackMarket->IsTradeAllowed(this))
+	{
+		EndTrade();
 		return false;
 	}
 	// Players who walked away lose the trade instead of trading from across the map.

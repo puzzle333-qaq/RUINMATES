@@ -23,8 +23,195 @@ void URuinmatesBackpackComponent::GetLifetimeReplicatedProps(TArray<FLifetimePro
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(URuinmatesBackpackComponent, Tier);
+	DOREPLIFETIME(URuinmatesBackpackComponent, CapacityOverride);
 	DOREPLIFETIME(URuinmatesBackpackComponent, Slots);
 	DOREPLIFETIME(URuinmatesBackpackComponent, Revision);
+}
+
+bool URuinmatesBackpackComponent::SetCapacityOverride(int32 NewCapacity)
+{
+	if (!IsValid(GetOwner()) || !GetOwner()->HasAuthority() || NewCapacity < 1 || NewCapacity > 512)
+	{
+		return false;
+	}
+	for (int32 Index = NewCapacity; Index < Slots.Num(); ++Index)
+	{
+		if (!Slots[Index].IsEmpty())
+		{
+			return false;
+		}
+	}
+	if (CapacityOverride == NewCapacity && Slots.Num() == NewCapacity)
+	{
+		return true;
+	}
+	CapacityOverride = NewCapacity;
+	Slots.SetNum(NewCapacity);
+	MarkChanged();
+	return true;
+}
+
+bool URuinmatesBackpackComponent::RestoreSavedInventory(ERuinmatesBackpackTier SavedTier, int32 SavedOverride,
+	const TArray<FRuinmatesItemStack>& SavedSlots)
+{
+	if (!GetOwner() || !GetOwner()->HasAuthority() || uint8(SavedTier) > uint8(ERuinmatesBackpackTier::Heavy)
+		|| SavedOverride < 0 || SavedOverride > 512) return false;
+	const auto PreviousTier = Tier;
+	const int32 PreviousOverride = CapacityOverride;
+	Tier = SavedTier; CapacityOverride = SavedOverride;
+	TArray<FRuinmatesItemStack> Canonical;
+	if (!PrepareSlotsForTransaction(SavedSlots, Revision, Canonical))
+	{
+		Tier = PreviousTier; CapacityOverride = PreviousOverride;
+		return false;
+	}
+	Slots = MoveTemp(Canonical); MarkChanged();
+	return true;
+}
+
+int32 URuinmatesBackpackComponent::CountItem(FName ItemId) const
+{
+	if (ItemId.IsNone())
+	{
+		return 0;
+	}
+	int64 Total = 0;
+	for (const FRuinmatesItemStack& Stack : Slots)
+	{
+		if (Stack.ItemId == ItemId && Stack.Count > 0)
+		{
+			Total += Stack.Count;
+			if (Total >= MAX_int32)
+			{
+				return MAX_int32;
+			}
+		}
+	}
+	return static_cast<int32>(Total);
+}
+
+bool URuinmatesBackpackComponent::PrepareSlotsForTransaction(const TArray<FRuinmatesItemStack>& InSlots,
+	uint32 ExpectedRevision, TArray<FRuinmatesItemStack>& OutCanonical) const
+{
+	const int32 Capacity = GetCapacity();
+	if (!IsValid(GetOwner()) || !GetOwner()->HasAuthority() || ExpectedRevision != Revision
+		|| Capacity < 1 || Capacity > 512 || InSlots.Num() > Capacity)
+	{
+		return false;
+	}
+	const URuinmatesItemDatabaseSubsystem* Database = URuinmatesItemDatabaseSubsystem::Get(this);
+	TArray<FRuinmatesItemStack> Candidate;
+	Candidate.Reserve(Capacity);
+	for (const FRuinmatesItemStack& Stack : InSlots)
+	{
+		if (Stack.ItemId.IsNone() && Stack.Count == 0)
+		{
+			Candidate.AddDefaulted();
+			continue;
+		}
+		if (Stack.ItemId.IsNone() || Stack.Count <= 0 || !Database || !Database->IsLoaded())
+		{
+			return false;
+		}
+		const FRuinmatesItemRow* Row = Database->FindItemDefinition(Stack.ItemId);
+		if (!Row || Row->MaxStack < 1 || Stack.Count > Row->MaxStack)
+		{
+			return false;
+		}
+		FRuinmatesItemStack Canonical = URuinmatesItemDatabaseSubsystem::CreateStackFromRow(*Row, Stack.ItemId, Stack.Count);
+		Canonical.bRevealed = true;
+		Candidate.Add(MoveTemp(Canonical));
+	}
+	Candidate.SetNum(Capacity);
+	OutCanonical = MoveTemp(Candidate);
+	return true;
+}
+
+bool URuinmatesBackpackComponent::ReplaceSlotsForTransaction(const TArray<FRuinmatesItemStack>& InSlots,
+	uint32 ExpectedRevision, bool bNotify)
+{
+	TArray<FRuinmatesItemStack> Canonical;
+	if (!PrepareSlotsForTransaction(InSlots, ExpectedRevision, Canonical))
+	{
+		return false;
+	}
+	Slots = MoveTemp(Canonical);
+	bTransactionChangePending = true;
+	if (bNotify)
+	{
+		PublishTransactionChange();
+	}
+	return true;
+}
+
+void URuinmatesBackpackComponent::PublishTransactionChange()
+{
+	if (IsValid(GetOwner()) && GetOwner()->HasAuthority() && bTransactionChangePending)
+	{
+		MarkChanged();
+	}
+}
+
+bool URuinmatesBackpackComponent::ConsumeItemsFromSlots(TArray<FRuinmatesItemStack>& InOutSlots,
+	const TMap<FName, int32>& Costs)
+{
+	if (Costs.IsEmpty())
+	{
+		return true;
+	}
+	TMap<FName, int64> Available;
+	for (const TPair<FName, int32>& Cost : Costs)
+	{
+		if (Cost.Key.IsNone() || Cost.Value <= 0)
+		{
+			return false;
+		}
+		Available.Add(Cost.Key, 0);
+	}
+	for (const FRuinmatesItemStack& Stack : InOutSlots)
+	{
+		if (Stack.ItemId.IsNone() && Stack.Count == 0)
+		{
+			continue;
+		}
+		if (Stack.ItemId.IsNone() || Stack.Count <= 0 || Stack.MaxStack < 1 || Stack.Count > Stack.MaxStack)
+		{
+			return false;
+		}
+		if (int64* Total = Available.Find(Stack.ItemId))
+		{
+			*Total += Stack.Count;
+		}
+	}
+	for (const TPair<FName, int32>& Cost : Costs)
+	{
+		if (Available.FindChecked(Cost.Key) < Cost.Value)
+		{
+			return false;
+		}
+	}
+	// Every cost was checked before any slot changes. Working on a copy also supports callers
+	// preparing multiple stores before the manager commits either live component.
+	TArray<FRuinmatesItemStack> Candidate = InOutSlots;
+	for (const TPair<FName, int32>& Cost : Costs)
+	{
+		int32 Remaining = Cost.Value;
+		for (FRuinmatesItemStack& Stack : Candidate)
+		{
+			if (Stack.ItemId == Cost.Key && Remaining > 0)
+			{
+				const int32 Taken = FMath::Min(Remaining, Stack.Count);
+				Remaining -= Taken;
+				Stack.Count -= Taken;
+				if (Stack.Count == 0)
+				{
+					Stack = FRuinmatesItemStack();
+				}
+			}
+		}
+	}
+	InOutSlots = MoveTemp(Candidate);
+	return true;
 }
 
 int32 URuinmatesBackpackComponent::GetUsedSlotCount() const
@@ -309,6 +496,14 @@ void URuinmatesBackpackComponent::EnsureSlotCount()
 	{
 		return;
 	}
+	for (int32 Index = Capacity; Index < Slots.Num(); ++Index)
+	{
+		if (!Slots[Index].IsEmpty())
+		{
+			// A bad capacity edit must never silently truncate existing player inventory.
+			return;
+		}
+	}
 	Slots.SetNum(Capacity);
 }
 
@@ -352,6 +547,7 @@ void URuinmatesBackpackComponent::NormalizeStoredSlots()
 
 void URuinmatesBackpackComponent::MarkChanged()
 {
+	bTransactionChangePending = false;
 	++Revision;
 	OnChanged.Broadcast();
 }

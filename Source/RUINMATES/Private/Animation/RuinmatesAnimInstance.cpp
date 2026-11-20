@@ -22,59 +22,30 @@ FRuinmatesAnimChoice URuinmatesAnimInstance::ChooseAnims(
 {
 	FRuinmatesAnimChoice Choice;
 
-	if (bCrouching && WeaponAnims.Strafe_Crouching)
-	{
-		Choice.BlendSpace = WeaponAnims.Strafe_Crouching;
-	}
-	else if (WeaponAnims.Strafe_Standing)
-	{
-		Choice.BlendSpace = WeaponAnims.Strafe_Standing;
-	}
-	else if (WeaponAnims.Strafe_Walking)
-	{
-		Choice.BlendSpace = WeaponAnims.Strafe_Walking;
-	}
-	else
-	{
-		Choice.BlendSpace = FallbackBlendSpace;
-	}
+	// Locomotion is global now: every weapon uses the character's shared blend space.
+	Choice.BlendSpace = FallbackBlendSpace;
 
-	const bool bHasCrouchClip = bCrouching && (WeaponAnims.CrouchIdleAnim || WeaponAnims.Strafe_Crouching);
-	Choice.bApplyCrouchOffset = bCrouching && !bInAir && !bHasCrouchClip;
+	// No per-weapon crouch clip exists any more, so crouch is handled procedurally.
+	Choice.bApplyCrouchOffset = bCrouching && !bInAir;
 
 	if (bInAir)
 	{
 		Choice.Sequence = VerticalSpeed > 0.f ? FallbackJump : FallbackFall;
 	}
-	else if (bCrouching && WeaponAnims.CrouchIdleAnim)
+	else if (WeaponAnims.Idle)
 	{
-		Choice.Sequence = WeaponAnims.CrouchIdleAnim;
-	}
-	else if (!bCrouching && bAiming && WeaponAnims.AimIdleAnim)
-	{
-		Choice.Sequence = WeaponAnims.AimIdleAnim;
-	}
-	else if (WeaponAnims.IdleAnim)
-	{
-		Choice.Sequence = WeaponAnims.IdleAnim;
+		Choice.Sequence = WeaponAnims.Idle.Get();
 	}
 	else
 	{
 		Choice.Sequence = FallbackIdle;
 	}
 
-	if (bAiming && WeaponAnims.AimOffset_Aim)
-	{
-		Choice.AimOffset = WeaponAnims.AimOffset_Aim;
-	}
-	else
-	{
-		Choice.AimOffset = WeaponAnims.AimOffset_Hip;
-	}
+	// One aim offset per weapon; it keeps updating while aiming and while hip firing.
+	Choice.AimOffset = WeaponAnims.AimOffset.Get();
 
 	return Choice;
 }
-
 void URuinmatesAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 {
 	Super::NativeUpdateAnimation(DeltaSeconds);
@@ -161,7 +132,18 @@ void URuinmatesAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 	AimOffsetAlpha = IsValid(WeaponAimOffset) ? 1.f : 0.f;
 	UpperBodyAlpha = bHasWeapon ? 1.f : 0.f;
 	AirSequence = LocomotionState == 7 ? UnarmedLand : (Velocity.Z > 0.f ? UnarmedJump : UnarmedFall);
-	if (LocomotionState == 3 && WeaponAnims.SprintAnim) WeaponSequence = WeaponAnims.SprintAnim;
+	// Armed upper-body pose states: ADS wins over sprint, both fall back to the weapon idle.
+	if (!bInAir)
+	{
+		if (bAimingNow && WeaponAnims.AimIdle)
+		{
+			WeaponSequence = WeaponAnims.AimIdle.Get();
+		}
+		else if (bIsSprinting && WeaponAnims.Sprint)
+		{
+			WeaponSequence = WeaponAnims.Sprint.Get();
+		}
+	}
 	const bool bDirectionOnly = WeaponBlendSpace && WeaponBlendSpace->IsA<UBlendSpace1D>()
 		&& WeaponBlendSpace->GetBlendParameter(0).Min < 0.f;
 	BlendX = WeaponBlendSpace && WeaponBlendSpace->IsA<UBlendSpace1D>() && !bDirectionOnly ? Speed : MovementDirection;

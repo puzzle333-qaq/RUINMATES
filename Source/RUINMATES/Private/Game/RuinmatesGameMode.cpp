@@ -34,6 +34,13 @@ void ARuinmatesGameMode::PostLogin(APlayerController* NewPlayer)
 	}
 }
 
+void ARuinmatesGameMode::RestartPlayer(AController* NewPlayer)
+{
+	Super::RestartPlayer(NewPlayer);
+	if (auto* Save = GetGameInstance() ? GetGameInstance()->GetSubsystem<URuinmatesSaveSubsystem>() : nullptr)
+		Save->RestoreBackpack(NewPlayer ? Cast<ARuinmatesCharacter>(NewPlayer->GetPawn()) : nullptr);
+}
+
 bool ARuinmatesGameMode::AreTeammates(const AActor* First, const AActor* Second)
 {
 	// Co-op has a single side: every player character is a teammate of every other one.

@@ -15,6 +15,8 @@ public:
 
 	virtual void InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage) override;
 	virtual void PostLogin(APlayerController* NewPlayer) override;
+	/** Restores campaign inventory only after a new pawn has actually been possessed. */
+	virtual void RestartPlayer(AController* NewPlayer) override;
 
 	UFUNCTION(BlueprintPure, Category = "RuinMates|Session")
 	int32 GetMaxPartySize() const { return MaxPartySize; }

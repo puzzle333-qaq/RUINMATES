@@ -22,42 +22,29 @@ enum class EReloadType : uint8
 	First    UMETA(DisplayName = "First Reload")
 };
 
-// Third-person locomotion / pose mapping. 1P pose layers are not included.
+// Third-person animation data. Final layout: five assets per weapon, everything else is global.
 USTRUCT(BlueprintType)
 struct RUINMATES_API FPlayerAnim
 {
 	GENERATED_BODY()
 
+	// Shared持枪基础姿态 across weapons of the same type.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RuinMates|Anim")
-	TObjectPtr<UAnimSequence> IdleAnim = nullptr;
+	TObjectPtr<UAnimSequence> Idle = nullptr;
 
+
+	// Sprint pose: armed upper body while sprinting. Optional; falls back to Idle.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RuinMates|Anim")
-	TObjectPtr<UAnimSequence> AimIdleAnim = nullptr;
+	TObjectPtr<UAnimSequence> Sprint = nullptr;
 
+	// ADS pose: armed upper body while aiming. Optional; falls back to Idle.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RuinMates|Anim")
-	TObjectPtr<UAnimSequence> CrouchIdleAnim = nullptr;
-
+	TObjectPtr<UAnimSequence> AimIdle = nullptr;
+	// Aim direction correction; shared across weapons when the pose matches.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RuinMates|Anim")
-	TObjectPtr<UAnimSequence> SprintAnim = nullptr;
+	TObjectPtr<UBlendSpace> AimOffset = nullptr;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RuinMates|Anim")
-	TObjectPtr<UBlendSpace> AimOffset_Hip = nullptr;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RuinMates|Anim")
-	TObjectPtr<UBlendSpace> AimOffset_Aim = nullptr;
-
-	// Locomotion blend spaces use the mannequin axes: X = direction (-180..180), Y = speed (cm/s).
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RuinMates|Anim")
-	TObjectPtr<UBlendSpace> Strafe_Standing = nullptr;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RuinMates|Anim")
-	TObjectPtr<UBlendSpace> Strafe_Crouching = nullptr;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RuinMates|Anim")
-	TObjectPtr<UBlendSpace> Strafe_Walking = nullptr;
-
-	UAnimSequence* GetIdleAnim() const { return IdleAnim.Get(); }
-	UAnimSequence* GetAimIdleAnim() const { return AimIdleAnim ? AimIdleAnim.Get() : IdleAnim.Get(); }
+	UAnimSequence* GetIdleAnim() const { return Idle.Get(); }
 };
 
 USTRUCT(BlueprintType)
@@ -65,95 +52,22 @@ struct RUINMATES_API FMontageData
 {
 	GENERATED_BODY()
 
+	// One equip montage for first draw and every later equip.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Equip")
-	TObjectPtr<UAnimMontage> EquipMontage = nullptr;
+	TObjectPtr<UAnimMontage> Equip = nullptr;
 
-	// First draw this session. Falls back to EquipMontage when null.
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Equip")
-	TObjectPtr<UAnimMontage> FirstEquipMontage = nullptr;
+	// One reload montage for both empty and tactical reloads.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Reload")
+	TObjectPtr<UAnimMontage> Reload = nullptr;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Fire")
-	TObjectPtr<UAnimMontage> FireMontage = nullptr;
+	TObjectPtr<UAnimMontage> Fire = nullptr;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Reload")
-	TObjectPtr<UAnimMontage> EmptyReloadMontage = nullptr;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Reload")
-	TObjectPtr<UAnimMontage> TacticalReloadMontage = nullptr;
-
-	// Optional random variants. Empty entries are ignored.
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Melee|Variants")
-	TArray<TObjectPtr<UAnimMontage>> FireMontages;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Melee|Variants")
-	TArray<TObjectPtr<UAnimMontage>> EquipMontages;
-
-	UAnimMontage* ResolveFireMontage() const
-	{
-		TArray<UAnimMontage*> Candidates;
-		for (const TObjectPtr<UAnimMontage>& Montage : FireMontages)
-		{
-			if (Montage)
-			{
-				Candidates.Add(Montage.Get());
-			}
-		}
-		if (FireMontage)
-		{
-			Candidates.AddUnique(FireMontage.Get());
-		}
-		if (Candidates.Num() == 0)
-		{
-			return nullptr;
-		}
-		return Candidates[FMath::RandRange(0, Candidates.Num() - 1)];
-	}
-
-	UAnimMontage* ResolveEquipMontage(bool bFirstDraw = false) const
-	{
-		if (bFirstDraw && FirstEquipMontage)
-		{
-			return FirstEquipMontage.Get();
-		}
-
-		TArray<UAnimMontage*> Candidates;
-		for (const TObjectPtr<UAnimMontage>& Montage : EquipMontages)
-		{
-			if (Montage)
-			{
-				Candidates.Add(Montage.Get());
-			}
-		}
-		if (EquipMontage)
-		{
-			Candidates.AddUnique(EquipMontage.Get());
-		}
-		if (Candidates.Num() == 0)
-		{
-			return FirstEquipMontage.Get();
-		}
-		return Candidates[FMath::RandRange(0, Candidates.Num() - 1)];
-	}
-
-	UAnimMontage* ResolveReloadMontage(EReloadType Type) const
-	{
-		if (Type == EReloadType::Empty)
-		{
-			if (EmptyReloadMontage) return EmptyReloadMontage.Get();
-			if (TacticalReloadMontage) return TacticalReloadMontage.Get();
-			return nullptr;
-		}
-		if (Type == EReloadType::Tactical)
-		{
-			if (TacticalReloadMontage) return TacticalReloadMontage.Get();
-			if (EmptyReloadMontage) return EmptyReloadMontage.Get();
-			return nullptr;
-		}
-		if (EmptyReloadMontage) return EmptyReloadMontage.Get();
-		if (TacticalReloadMontage) return TacticalReloadMontage.Get();
-		return nullptr;
-	}
+	UAnimMontage* ResolveEquipMontage(bool bFirstDraw = false) const { return Equip.Get(); }
+	UAnimMontage* ResolveReloadMontage(EReloadType /*Type*/ = EReloadType::Tactical) const { return Reload.Get(); }
+	UAnimMontage* ResolveFireMontage() const { return Fire.Get(); }
 };
+
 
 // Per-weapon visual / animation data asset. Not a type-keyed category table.
 // Mesh and montage refs may be null; resolve helpers return nullptr instead of crashing.
@@ -183,9 +97,6 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RuinMates|Weapon|ThirdPerson")
 	FMontageData ThirdPersonMontages;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RuinMates|Weapon|WeaponMesh")
-	FMontageData WeaponMontages;
 
 	// Muzzle flash. Empty uses NS_WeaponFire. Spawned on the muzzle socket when a shot is fired.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RuinMates|Weapon|Effects")

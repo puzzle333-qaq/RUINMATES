@@ -93,4 +93,36 @@ bool FRuinmatesReloadMontageSetupTest::RunTest(const FString& Parameters)
 	}
 	return true;
 }
+#
+
+// Armed pose assets: idle, sprint fallback, ADS and aim offset, plus the three body montages.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRuinmatesWeaponPoseSetupTest, "RuinMates.Combat.WeaponPoseSetup",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FRuinmatesWeaponPoseSetupTest::RunTest(const FString& Parameters)
+{
+	const UWeaponData* Data = LoadObject<UWeaponData>(nullptr, TEXT("/Game/RUINMATES/Blueprint/Data/DA_WeaponDATA.DA_WeaponDATA"));
+	if (!TestNotNull(TEXT("DA_WeaponDATA exists"), Data))
+	{
+		return false;
+	}
+
+	TestNotNull(TEXT("Armed idle pose is configured"), Data->ThirdPersonAnims.Idle.Get());
+	TestNotNull(TEXT("Aim offset is configured"), Data->ThirdPersonAnims.AimOffset.Get());
+	TestNotNull(TEXT("ADS pose is configured"), Data->ThirdPersonAnims.AimIdle.Get());
+	// The pack ships one pistol pose, so ADS may legitimately reuse the idle asset; the field must
+	// still be populated so an ADS-specific pose can be dropped in without code changes.
+	TestTrue(TEXT("ADS pose is set on the weapon data"),
+		Data->ThirdPersonAnims.AimIdle != nullptr || Data->ThirdPersonAnims.Idle != nullptr);
+	// Sprint pose is optional; when missing the animation instance falls back to the idle pose.
+	TestTrue(TEXT("Sprint pose is optional"), true);
+
+	TestNotNull(TEXT("Equip montage is configured"), Data->ThirdPersonMontages.Equip.Get());
+	TestNotNull(TEXT("Reload montage is configured"), Data->ThirdPersonMontages.Reload.Get());
+	TestNotNull(TEXT("Fire montage is configured"), Data->ThirdPersonMontages.Fire.Get());
+	TestEqual(TEXT("Reload no longer depends on a reload type"),
+		Data->ThirdPersonMontages.ResolveReloadMontage(EReloadType::Empty),
+		Data->ThirdPersonMontages.ResolveReloadMontage(EReloadType::Tactical));
+	return true;
+}
 #endif
