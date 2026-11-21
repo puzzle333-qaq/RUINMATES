@@ -48,3 +48,8 @@ Config/*secret*
 /.vscode/
 __pycache__/
 *.pyc
+
+# Repository holds source code only: game assets and Python tooling stay local.
+/Content/
+/Scripts/
+*.py
